@@ -9,6 +9,9 @@ Nền tảng theo dõi sức khỏe bệnh nhân và bác sĩ — base local dev
 - Database: MySQL 8.4
 - Runtime: Docker Compose, đúng 3 services (`frontend`, `backend`, `database`)
 
+> 📘 Người mới bắt đầu? Xem **[README-TRIEN-KHAI-DOCKER.md](README-TRIEN-KHAI-DOCKER.md)** —
+> hướng dẫn từng bước cài Docker trên máy tính mới nguyên, triển khai, và giải thích toàn bộ mã nguồn.
+
 Đã bao gồm: auth theo vai trò (PATIENT/DOCTOR/ADMIN), hồ sơ & tìm kiếm bác sĩ,
 kết nối bác sĩ–bệnh nhân (request/approve), bệnh án, sinh hiệu, cảnh báo tự động,
 audit log bất biến, chatbot định hướng triệu chứng (mock khi Ollama chưa sẵn sàng),
