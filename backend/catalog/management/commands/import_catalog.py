@@ -10,20 +10,8 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         project_root = Path(__file__).resolve().parents[4]
-        backend_root = Path(__file__).resolve().parents[3]
-        catalog_roots = (Path('/data/catalog'), project_root, backend_root)
-        catalog_root = next(
-            (
-                root for root in catalog_roots
-                if all((root / filename).is_file() for filename in (
-                    'disease_translations.csv',
-                    'symptom_translations.csv',
-                ))
-            ),
-            project_root,
-        )
-        parser.add_argument('--diseases', default=catalog_root / 'disease_translations.csv')
-        parser.add_argument('--symptoms', default=catalog_root / 'symptom_translations.csv')
+        parser.add_argument('--diseases', default=project_root / 'disease_translations.csv')
+        parser.add_argument('--symptoms', default=project_root / 'symptom_translations.csv')
 
     def handle(self, *args, **options):
         self.import_file(Path(options['diseases']), Disease, 'disease_en', 'disease_vi')

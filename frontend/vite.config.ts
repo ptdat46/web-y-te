@@ -8,7 +8,7 @@ export default defineConfig({
     proxy: {
       // Proxy API requests so cookies work same-origin (SameSite=Lax)
       '/api': {
-        target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:8000',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       },
     },

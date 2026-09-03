@@ -1,7 +1,7 @@
 # Health Care Monitor
 
 Nền tảng theo dõi sức khỏe cho bệnh nhân, bác sĩ và quản trị viên.
-Project chạy local bằng **MySQL + Django + React/Vite**. Không cần Docker.
+Project chạy local bằng **MySQL + Django + React/Vite**.
 
 ## 1. Tổng quan hệ thống
 
@@ -267,15 +267,6 @@ Mở `http://localhost:5173`.
 Frontend dùng `/api/v1` làm API base URL. Vite proxy trong
 `frontend/vite.config.ts` chuyển `/api` tới `http://localhost:8000`; không cần sửa code
 frontend để chạy local.
-
-### Biến môi trường frontend tùy chọn
-
-Nếu backend chạy cổng khác, đặt biến trước khi chạy Vite:
-
-```powershell
-$env:VITE_API_PROXY_TARGET="http://localhost:8000"
-npm.cmd run dev -- --host 127.0.0.1
-```
 
 `VITE_API_URL` có trong `.env.example` để tham khảo, nhưng API client hiện dùng
 `/api/v1` cố định nhằm giữ cookie refresh cùng origin qua Vite proxy.
@@ -546,8 +537,7 @@ Dùng `npm.cmd` thay cho `npm`, ví dụ `npm.cmd install` và `npm.cmd run dev`
 
 ### `CSV file not found`
 
-Kiểm tra hai file catalog trong thư mục gốc project. Lệnh import tự tìm cả hai CSV theo thứ tự
-`/data/catalog` (Docker), thư mục gốc project (local), rồi `backend/`;
+Kiểm tra hai file catalog trong thư mục gốc project. Lệnh import dùng hai file này mặc định;
 hãy truyền đường dẫn thủ công nếu đặt file ở nơi khác:
 
 ```powershell
@@ -556,14 +546,7 @@ hãy truyền đường dẫn thủ công nếu đặt file ở nơi khác:
   --symptoms "D:\data\symptom_translations.csv"
 ```
 
-## 14. Docker
-
-Docker **không cần thiết** cho cách chạy local được mô tả trong README này. Các file
-`docker-compose.yml`, `backend/Dockerfile`, `frontend/Dockerfile` và
-`README-TRIEN-KHAI-DOCKER.md` được giữ lại như tài liệu/option legacy cho môi trường đã
-dùng Docker; không cần cài Docker để phát triển hoặc chạy project local.
-
-## 15. Lưu ý bảo mật và y tế
+## 14. Lưu ý bảo mật và y tế
 
 - Không đưa mật khẩu demo, `DJANGO_SECRET_KEY` local hoặc dữ liệu bệnh nhân thật lên Git.
 - Production cần `DJANGO_DEBUG=0`, secret key riêng, HTTPS, cookie secure, backup mã hóa,
