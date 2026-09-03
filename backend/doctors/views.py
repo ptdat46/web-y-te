@@ -3,12 +3,11 @@ from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from accounts.permissions import IsDoctorOrAdmin
+from accounts.permissions import IsDoctorOrAdmin, IsPatientOrDoctor
 from .models import ConnectionStatus, DoctorPatientConnection, DoctorProfile
 from .serializers import (
     ConnectionCreateSerializer,
     ConnectionSerializer,
-    ConnectionStatusUpdateSerializer,
     DoctorProfileSerializer,
     PublicDoctorSerializer,
 )
@@ -82,29 +81,30 @@ class ConnectionViewSet(
     mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
     mixins.ListModelMixin,
+    mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
     """
     Doctor-patient connections.
 
-    * POST   /connections/            -> create a connection request
+    * POST   /connections/            -> patient grants access
     * GET    /connections/            -> list my connections (doctor sees patients,
                                          patient sees doctors) filtered by ?status=
     * GET    /connections/{id}/       -> detail
-    * POST   /connections/{id}/respond/ -> APPROVE or REJECT (doctor only)
+    * DELETE /connections/{id}/       -> patient revokes access
     """
     serializer_class = ConnectionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsPatientOrDoctor]
 
     def get_queryset(self):
         qs = DoctorPatientConnection.objects.select_related('doctor', 'doctor__user', 'patient').all()
         user = self.request.user
         if user.role == 'DOCTOR':
-            qs = qs.filter(doctor__user=user)
+            qs = qs.filter(doctor__user=user, status=ConnectionStatus.APPROVED)
         elif user.role == 'PATIENT':
             qs = qs.filter(patient=user)
-        else:  # ADMIN sees everything
-            pass
+        else:
+            qs = qs.none()
         status_param = self.request.query_params.get('status')
         if status_param:
             qs = qs.filter(status=status_param.upper())
@@ -113,14 +113,12 @@ class ConnectionViewSet(
     def create(self, request, *args, **kwargs):
         serializer = ConnectionCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        # Only doctor or patient involved can create the link
+        # Only the patient can grant access.
         doctor = serializer.validated_data['doctor']
         patient = serializer.validated_data['patient']
         user = request.user
-        is_doctor = user.role == 'DOCTOR' and doctor.user_id == user.id
         is_patient = user.role == 'PATIENT' and patient.id == user.id
-        is_admin = user.role == 'ADMIN'
-        if not (is_doctor or is_patient or is_admin):
+        if not is_patient:
             return Response(
                 {'detail': 'You can only create a connection involving yourself.'},
                 status=status.HTTP_403_FORBIDDEN,
@@ -128,7 +126,7 @@ class ConnectionViewSet(
         conn, created = DoctorPatientConnection.objects.get_or_create(
             doctor=doctor,
             patient=patient,
-            defaults={'status': ConnectionStatus.PENDING},
+            defaults={'status': ConnectionStatus.APPROVED},
         )
         if not created:
             return Response(
@@ -137,19 +135,9 @@ class ConnectionViewSet(
             )
         return Response(ConnectionSerializer(conn).data, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['post'])
-    def respond(self, request, pk=None):
-        conn = self.get_object()
-        if request.user.role == 'ADMIN':
-            pass
-        elif request.user.role == 'DOCTOR' and conn.doctor.user_id == request.user.id:
-            pass
-        else:
-            return Response(
-                {'detail': 'Only the doctor can approve or reject this connection.'},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        serializer = ConnectionStatusUpdateSerializer(conn, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(ConnectionSerializer(conn).data)
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if self.request.user.role != 'PATIENT' or instance.patient_id != self.request.user.id:
+            return Response({'detail': 'Chỉ bệnh nhân mới được hủy kết nối.'}, status=status.HTTP_403_FORBIDDEN)
+        instance.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

@@ -21,7 +21,7 @@ export default function RecordsPage() {
     prescription: '',
   })
 
-  const canWrite = user?.role === 'DOCTOR' || user?.role === 'ADMIN'
+  const canWrite = user?.role === 'DOCTOR'
 
   const load = useCallback(async () => {
     try {

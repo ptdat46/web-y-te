@@ -4,7 +4,9 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
-from .serializers import RegisterSerializer, LoginSerializer, UserSerializer
+from .serializers import AdminUserSerializer, ChangePasswordSerializer, RegisterSerializer, LoginSerializer, UserSerializer
+from .models import User
+from .permissions import IsAdminUser
 
 
 def set_refresh_token_cookie(response, refresh_token):
@@ -51,6 +53,7 @@ def login_view(request):
     response = Response({
         'user': UserSerializer(user).data,
         'access': tokens['access'],
+        'must_change_password': user.must_change_password,
     })
     set_refresh_token_cookie(response, tokens['refresh'])
     return response
@@ -101,3 +104,34 @@ def refresh_view(request):
 @permission_classes([IsAuthenticated])
 def me_view(request):
     return Response({'user': UserSerializer(request.user).data})
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def change_password_view(request):
+    serializer = ChangePasswordSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    if not request.user.check_password(serializer.validated_data['current_password']):
+        return Response({'current_password': 'Mật khẩu hiện tại không đúng.'}, status=status.HTTP_400_BAD_REQUEST)
+    request.user.set_password(serializer.validated_data['new_password'])
+    request.user.must_change_password = False
+    request.user.save(update_fields=['password', 'must_change_password'])
+    return Response({'user': UserSerializer(request.user).data})
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAdminUser])
+def admin_users_view(request):
+    if request.method == 'GET':
+        users = User.objects.exclude(role='ADMIN').order_by('role', 'username')
+        return Response(AdminUserSerializer(users, many=True).data)
+    serializer = AdminUserSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    return Response(AdminUserSerializer(serializer.save()).data, status=status.HTTP_201_CREATED)
+
+@api_view(['DELETE'])
+@permission_classes([IsAdminUser])
+def admin_user_delete_view(request, user_id):
+    user = User.objects.filter(pk=user_id).exclude(role='ADMIN').first()
+    if user is None:
+        return Response({'detail': 'Không tìm thấy tài khoản cần xóa.'}, status=status.HTTP_404_NOT_FOUND)
+    user.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)

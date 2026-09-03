@@ -9,8 +9,12 @@ class Command(BaseCommand):
     help = 'Import bilingual disease and symptom catalogs from CSV files.'
 
     def add_arguments(self, parser):
-        parser.add_argument('--diseases', default='/data/catalog/disease_translations.csv')
-        parser.add_argument('--symptoms', default='/data/catalog/symptom_translations.csv')
+        project_root = Path(__file__).resolve().parents[4]
+        catalog_root = Path('/data/catalog')
+        if not catalog_root.exists():
+            catalog_root = project_root
+        parser.add_argument('--diseases', default=catalog_root / 'disease_translations.csv')
+        parser.add_argument('--symptoms', default=catalog_root / 'symptom_translations.csv')
 
     def handle(self, *args, **options):
         self.import_file(Path(options['diseases']), Disease, 'disease_en', 'disease_vi')

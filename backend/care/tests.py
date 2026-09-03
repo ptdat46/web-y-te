@@ -3,7 +3,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import RoleChoices, User
 from doctors.models import ConnectionStatus, DoctorPatientConnection, DoctorProfile
-from .models import AuditLog, MedicalRecord
+from .models import Alert, AuditLog, MedicalRecord, VitalSign
 
 
 def create_user(username, role):
@@ -91,3 +91,19 @@ class AuditLogImmutabilityTests(TestCase):
             audit.save()
         with self.assertRaises(ValueError):
             audit.delete()
+
+class AdminDataPrivacyTests(TestCase):
+    def test_admin_cannot_access_patient_doctor_data(self):
+        admin = create_user('privacy.admin', RoleChoices.ADMIN)
+        patient = create_user('privacy.patient', RoleChoices.PATIENT)
+        doctor = create_user('privacy.doctor', RoleChoices.DOCTOR)
+        doctor_profile = DoctorProfile.objects.create(user=doctor)
+        MedicalRecord.objects.create(patient=patient, doctor=doctor, title='Private')
+        VitalSign.objects.create(patient=patient, temperature=37)
+        Alert.objects.create(patient=patient, created_by=patient, title='Private alert', message='Private')
+        DoctorPatientConnection.objects.create(doctor=doctor_profile, patient=patient, status=ConnectionStatus.APPROVED)
+        client = APIClient()
+        client.force_authenticate(admin)
+        for path in ('/api/v1/records/', '/api/v1/vitals/', '/api/v1/alerts/', '/api/v1/connections/'):
+            response = client.get(path)
+            self.assertEqual(response.status_code, 403)

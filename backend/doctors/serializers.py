@@ -58,7 +58,7 @@ class ConnectionSerializer(serializers.ModelSerializer):
 
 class ConnectionCreateSerializer(serializers.ModelSerializer):
     """
-    Create a new connection request. Status is forced to PENDING on creation.
+    Create a new connection. Status is forced to APPROVED (patient consent).
     """
     doctor_id = serializers.PrimaryKeyRelatedField(
         source='doctor',
@@ -83,17 +83,5 @@ class ConnectionCreateSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        validated_data['status'] = ConnectionStatus.PENDING
+        validated_data['status'] = ConnectionStatus.APPROVED
         return super().create(validated_data)
-
-
-class ConnectionStatusUpdateSerializer(serializers.ModelSerializer):
-    """Approve / reject a connection request."""
-    class Meta:
-        model = DoctorPatientConnection
-        fields = ('status',)
-
-    def validate_status(self, value):
-        if value not in (ConnectionStatus.APPROVED, ConnectionStatus.REJECTED):
-            raise serializers.ValidationError('Only APPROVED or REJECTED are allowed here.')
-        return value

@@ -19,16 +19,14 @@ from .serializers import (
 )
 
 
-class IsPatientOrDoctorOrAdmin(permissions.BasePermission):
-    """Allow authenticated users; object-level checks decide access."""
+class IsPatientOrDoctor(permissions.BasePermission):
+    """Allow patients and doctors; object-level checks decide access."""
 
     def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated)
+        return bool(request.user and request.user.is_authenticated and request.user.role in ('PATIENT', 'DOCTOR'))
 
     def has_object_permission(self, request, view, obj):
         user = request.user
-        if user.role == 'ADMIN':
-            return True
         patient = getattr(obj, 'patient', None)
         if patient is None:
             return False
@@ -56,13 +54,11 @@ class MedicalRecordViewSet(
     patients; admins see everything.
     """
     serializer_class = MedicalRecordSerializer
-    permission_classes = [IsAuthenticated, IsPatientOrDoctorOrAdmin]
+    permission_classes = [IsAuthenticated, IsPatientOrDoctor]
 
     def get_queryset(self):
         qs = MedicalRecord.objects.select_related('patient', 'doctor', 'disease').all()
         user = self.request.user
-        if user.role == 'ADMIN':
-            return qs
         if user.role == 'PATIENT':
             return qs.filter(patient=user)
         # DOCTOR: records of connected patients + own authored records
@@ -80,7 +76,7 @@ class MedicalRecordViewSet(
                 raise PermissionDenied('Patients can only create records for themselves.')
             patient = user
         elif patient is None:
-            raise ValidationError({'patient_id': 'This field is required for doctors and admins.'})
+            raise ValidationError({'patient_id': 'This field is required for doctors.'})
         elif user.role == 'DOCTOR' and not DoctorPatientConnection.objects.filter(
             doctor__user=user,
             patient=patient,
@@ -121,13 +117,11 @@ class VitalSignViewSet(
     connected patients; everyone can read by same rules as medical records.
     """
     serializer_class = VitalSignSerializer
-    permission_classes = [IsAuthenticated, IsPatientOrDoctorOrAdmin]
+    permission_classes = [IsAuthenticated, IsPatientOrDoctor]
 
     def get_queryset(self):
         qs = VitalSign.objects.select_related('patient').all()
         user = self.request.user
-        if user.role == 'ADMIN':
-            return qs
         if user.role == 'PATIENT':
             return qs.filter(patient=user)
         patient_ids = DoctorPatientConnection.objects.filter(
@@ -143,14 +137,13 @@ class VitalSignViewSet(
         user = request.user
         if patient is None:
             patient = user
-            if user.role != 'PATIENT' and user.role != 'ADMIN':
+            if user.role != 'PATIENT':
                 return Response(
                     {'detail': 'Doctors must specify a patient_id.'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
         else:
-            allowed = user.role == 'ADMIN'
-            allowed = allowed or (user.role == 'PATIENT' and patient.id == user.id)
+            allowed = user.role == 'PATIENT' and patient.id == user.id
             allowed = allowed or (user.role == 'DOCTOR' and DoctorPatientConnection.objects.filter(
                 doctor__user=user,
                 patient=patient,
@@ -208,13 +201,11 @@ class AlertViewSet(
     Alerts. Read-only listing; status can be updated via PATCH /alerts/{id}/status/.
     """
     serializer_class = AlertSerializer
-    permission_classes = [IsAuthenticated, IsPatientOrDoctorOrAdmin]
+    permission_classes = [IsAuthenticated, IsPatientOrDoctor]
 
     def get_queryset(self):
         qs = Alert.objects.select_related('patient', 'created_by', 'related_vital').all()
         user = self.request.user
-        if user.role == 'ADMIN':
-            return qs
         if user.role == 'PATIENT':
             return qs.filter(patient=user)
         patient_ids = DoctorPatientConnection.objects.filter(
@@ -226,9 +217,9 @@ class AlertViewSet(
     @action(detail=True, methods=['patch'])
     def status(self, request, pk=None):
         alert = self.get_object()
-        if request.user.role not in ('DOCTOR', 'ADMIN'):
+        if request.user.role != 'DOCTOR':
             return Response(
-                {'detail': 'Only doctors or admins can update alert status.'},
+                {'detail': 'Only doctors can update alert status.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
         serializer = AlertUpdateSerializer(alert, data=request.data, partial=True)

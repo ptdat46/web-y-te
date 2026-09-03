@@ -12,6 +12,8 @@ import DoctorsPage from './pages/DoctorsPage'
 import ConnectionsPage from './pages/ConnectionsPage'
 import ChatbotPage from './pages/ChatbotPage'
 import AuditPage from './pages/AuditPage'
+import UsersPage from './pages/UsersPage'
+import ChangePasswordPage from './pages/ChangePasswordPage'
 import { Spinner } from './components/ui'
 
 function RequireAuth({ roles }: { roles?: string[] }) {
@@ -44,12 +46,15 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
           </Route>
+          <Route element={<RequireAuth roles={['DOCTOR']} />}>
+            <Route path="/change-password" element={<ChangePasswordPage />} />
+          </Route>
 
           <Route element={<RequireAuth />}>
             <Route element={<Layout />}>
               <Route path="/app" element={<DashboardPage />} />
 
-              <Route element={<RequireAuth roles={['PATIENT', 'DOCTOR', 'ADMIN']} />}>
+              <Route element={<RequireAuth roles={['PATIENT', 'DOCTOR']} />}>
                 <Route path="/app/chat" element={<ChatbotPage />} />
               </Route>
 
@@ -63,12 +68,12 @@ export default function App() {
                 <Route path="/app/doctors" element={<DoctorsPage />} />
               </Route>
 
-              <Route element={<RequireAuth roles={['DOCTOR']} />}>
+              <Route element={<RequireAuth roles={['PATIENT', 'DOCTOR']} />}>
                 <Route path="/app/connections" element={<ConnectionsPage />} />
               </Route>
 
               <Route element={<RequireAuth roles={['ADMIN']} />}>
-                <Route path="/app/audit" element={<AuditPage />} />
+                <Route path="/app/users" element={<UsersPage />} />
               </Route>
             </Route>
           </Route>

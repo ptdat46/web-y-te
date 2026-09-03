@@ -17,8 +17,8 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/app/alerts', label: 'Cảnh báo', icon: '⚠', roles: ['PATIENT', 'DOCTOR'] },
   { to: '/app/doctors', label: 'Tìm bác sĩ', icon: '⌕', roles: ['PATIENT'] },
   { to: '/app/connections', label: 'Kết nối', icon: '⇄', roles: ['DOCTOR'] },
-  { to: '/app/chat', label: 'Trợ lý sức khỏe', icon: '💬', roles: ['PATIENT', 'DOCTOR', 'ADMIN'] },
-  { to: '/app/audit', label: 'Nhật ký hệ thống', icon: '≡', roles: ['ADMIN'] },
+  { to: '/app/chat', label: 'Trợ lý sức khỏe', icon: '💬', roles: ['PATIENT', 'DOCTOR'] },
+  { to: '/app/users', label: 'Quản lý tài khoản', icon: '♙', roles: ['ADMIN'] },
 ]
 
 export default function Layout() {

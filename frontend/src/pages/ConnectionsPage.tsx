@@ -34,6 +34,15 @@ export default function ConnectionsPage() {
     }
   }
 
+  async function revoke(id: number) {
+    try {
+      await http.del(`/connections/${id}/`)
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể hủy kết nối.')
+    }
+  }
+
   const isDoctor = user?.role === 'DOCTOR'
 
   return (
@@ -41,17 +50,17 @@ export default function ConnectionsPage() {
       <div>
         <h1 className="font-serif text-2xl font-bold text-teal-950">Kết nối bác sĩ - bệnh nhân</h1>
         <p className="text-sm text-teal-600">
-          {isDoctor ? 'Xét duyệt yêu cầu kết nối từ bệnh nhân.' : 'Danh sách kết nối với bác sĩ của bạn.'}
+          {isDoctor ? 'Các bệnh nhân đã cấp quyền truy cập cho bạn.' : 'Bạn quyết định cấp hoặc hủy quyền truy cập cho bác sĩ.'}
         </p>
       </div>
 
       {error && <p className="rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
 
-      <Card title={isDoctor ? 'Yêu cầu từ bệnh nhân' : 'Bác sĩ của tôi'}>
+      <Card title={isDoctor ? 'Bệnh nhân đã kết nối' : 'Bác sĩ của tôi'}>
         {loading ? (
           <Spinner label="Đang tải…" />
         ) : connections.length === 0 ? (
-          <EmptyState title="Chưa có kết nối nào" hint={isDoctor ? 'Khi bệnh nhân gửi yêu cầu, chúng sẽ xuất hiện tại đây.' : 'Tìm bác sĩ và gửi yêu cầu kết nối để bắt đầu.'} />
+          <EmptyState title="Chưa có kết nối nào" hint={isDoctor ? 'Khi bệnh nhân cấp quyền, họ sẽ xuất hiện tại đây.' : 'Tìm bác sĩ và cấp quyền kết nối để bắt đầu.'} />
         ) : (
           <ul className="space-y-3">
             {connections.map((c) => (
@@ -71,19 +80,13 @@ export default function ConnectionsPage() {
                     {formatDate(c.created_at)}
                   </p>
                 </div>
-                {isDoctor && c.status === 'PENDING' && (
+                {!isDoctor && c.status === 'APPROVED' && (
                   <div className="flex gap-2">
                     <button
-                      onClick={() => respond(c.id, 'APPROVED')}
-                      className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700"
-                    >
-                      Duyệt
-                    </button>
-                    <button
-                      onClick={() => respond(c.id, 'REJECTED')}
+                      onClick={() => revoke(c.id)}
                       className="rounded-lg bg-red-100 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-200"
                     >
-                      Từ chối
+                      Hủy kết nối
                     </button>
                   </div>
                 )}

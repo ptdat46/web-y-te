@@ -15,7 +15,7 @@ export default function DashboardPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [v, a, c] = await Promise.all([
+        const [v, a, c] = user?.role === 'ADMIN' ? [[], [], []] : await Promise.all([
           http.get<VitalSign[]>('/vitals/').catch(() => []),
           http.get<Alert[]>('/alerts/').catch(() => []),
           http.get<Connection[]>('/connections/').catch(() => []),

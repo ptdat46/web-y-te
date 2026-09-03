@@ -11,6 +11,7 @@ export interface User {
   role: Role
   role_display: string
   is_active: boolean
+  must_change_password: boolean
 }
 
 export interface PublicUser {

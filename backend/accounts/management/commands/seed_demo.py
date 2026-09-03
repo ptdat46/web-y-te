@@ -51,6 +51,7 @@ class Command(BaseCommand):
         doctor.first_name = 'Nguyen'
         doctor.last_name = 'Van A'
         doctor.set_password('Test1234!')
+        doctor.must_change_password = True
         doctor.save()
 
         patient, _ = User.objects.get_or_create(

@@ -88,7 +88,7 @@ export default function VitalsPage() {
         </p>
       </div>
 
-      {(user?.role === 'PATIENT' || user?.role === 'ADMIN') && (
+      {user?.role === 'PATIENT' && (
         <Card title="Ghi nhận chỉ số mới">
           {error && <p className="mb-3 rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
           {success && <p className="mb-3 rounded-xl bg-green-50 px-4 py-2 text-sm text-green-700">{success}</p>}

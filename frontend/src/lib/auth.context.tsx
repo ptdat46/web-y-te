@@ -5,7 +5,7 @@ import type { User } from '../lib/types'
 interface AuthState {
   user: User | null
   loading: boolean
-  login: (username: string, password: string) => Promise<void>
+  login: (username: string, password: string) => Promise<User>
   register: (data: {
     username: string
     email: string
@@ -49,6 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     )
     setAccessToken(data.access)
     setUser(data.user)
+    return data.user
   }, [])
 
   const register = useCallback(

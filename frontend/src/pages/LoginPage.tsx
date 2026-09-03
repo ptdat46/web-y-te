@@ -15,8 +15,8 @@ export default function LoginPage() {
     setError('')
     setSubmitting(true)
     try {
-      await login(username.trim(), password)
-      navigate('/app', { replace: true })
+      const loggedInUser = await login(username.trim(), password)
+      navigate(loggedInUser.must_change_password ? '/change-password' : '/app', { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Đăng nhập thất bại')
     } finally {
@@ -79,7 +79,7 @@ export default function LoginPage() {
           <p className="mt-6 text-center text-sm text-teal-600">
             Chưa có tài khoản?{' '}
             <Link to="/register" className="font-semibold text-teal-700 underline-offset-2 hover:underline">
-              Đăng ký
+              Bệnh nhân đăng ký
             </Link>
           </p>
         </form>

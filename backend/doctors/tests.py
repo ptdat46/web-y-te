@@ -48,7 +48,7 @@ class DoctorFlowTests(TestCase):
             format='json',
         )
         self.assertEqual(resp.status_code, 201)
-        self.assertEqual(resp.data['status'], 'PENDING')
+        self.assertEqual(resp.data['status'], 'APPROVED')
 
     def test_duplicate_connection_rejected(self):
         self.patient_client.post(
@@ -63,36 +63,42 @@ class DoctorFlowTests(TestCase):
         )
         self.assertEqual(resp.status_code, 400)
 
-    def test_doctor_approves_own_request(self):
-        conn = DoctorPatientConnection.objects.create(
-            doctor=self.doctor_profile,
-            patient=self.patient,
-            status=ConnectionStatus.PENDING,
-        )
+    def test_doctor_cannot_create_connection(self):
         resp = self.doctor_client.post(
-            f'/api/v1/connections/{conn.id}/respond/',
-            {'status': 'APPROVED'},
+            '/api/v1/connections/',
+            {'doctor_id': self.doctor_profile.id, 'patient_id': self.patient.id},
             format='json',
         )
-        self.assertEqual(resp.status_code, 200)
-        conn.refresh_from_db()
-        self.assertEqual(conn.status, 'APPROVED')
+        self.assertEqual(resp.status_code, 403)
 
-    def test_other_doctor_cannot_approve(self):
+    def test_patient_revokes_connection(self):
         conn = DoctorPatientConnection.objects.create(
+            doctor=self.doctor_profile,
+            patient=self.patient,
+            status=ConnectionStatus.APPROVED,
+        )
+        resp = self.patient_client.delete(f'/api/v1/connections/{conn.id}/')
+        self.assertEqual(resp.status_code, 204)
+        self.assertFalse(DoctorPatientConnection.objects.filter(pk=conn.id).exists())
+
+    def test_doctor_only_sees_approved_connections(self):
+        # Create a PENDING connection (not yet consented)
+        DoctorPatientConnection.objects.create(
             doctor=self.doctor_profile,
             patient=self.patient,
             status=ConnectionStatus.PENDING,
         )
-        other_client = APIClient()
-        other_client.force_authenticate(user=self.other_doctor)
-        resp = other_client.post(
-            f'/api/v1/connections/{conn.id}/respond/',
-            {'status': 'APPROVED'},
-            format='json',
-        )
-        # Queryset scoping hides other doctors' connections entirely -> 404
-        self.assertEqual(resp.status_code, 404)
+        resp = self.doctor_client.get('/api/v1/connections/')
+        self.assertEqual(resp.status_code, 200)
+        # PENDING must not appear in doctor's list
+        self.assertEqual(len(resp.data), 0)
+
+        # Approve it
+        DoctorPatientConnection.objects.filter(
+            doctor=self.doctor_profile, patient=self.patient
+        ).update(status=ConnectionStatus.APPROVED)
+        resp = self.doctor_client.get('/api/v1/connections/')
+        self.assertEqual(len(resp.data), 1)
 
 
 class ObjectPermissionTests(TestCase):
@@ -153,3 +159,21 @@ class ObjectPermissionTests(TestCase):
         alerts = self.pa_client.get('/api/v1/alerts/')
         self.assertEqual(len(alerts.data), 1)
         self.assertEqual(alerts.data[0]['severity'], 'HIGH')
+
+    def test_doctor_only_sees_approved_connections(self):
+        # Create a PENDING connection (not yet consented) with patient B
+        DoctorPatientConnection.objects.create(
+            doctor=self.profile,
+            patient=self.patient_b,
+            status=ConnectionStatus.PENDING,
+        )
+        resp = self.doctor_client.get('/api/v1/connections/')
+        self.assertEqual(resp.status_code, 200)
+        # Only the APPROVED connection with patient A should appear
+        self.assertEqual(len(resp.data), 1)
+        # Approve pending
+        DoctorPatientConnection.objects.filter(
+            doctor=self.profile, patient=self.patient_b
+        ).update(status=ConnectionStatus.APPROVED)
+        resp = self.doctor_client.get('/api/v1/connections/')
+        self.assertEqual(len(resp.data), 2)

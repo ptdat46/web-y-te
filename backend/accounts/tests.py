@@ -1,6 +1,7 @@
 """Tests for the authentication system (registration, login, refresh, logout)."""
 
 from django.test import TestCase
+from accounts.models import RoleChoices, User
 from rest_framework.test import APIClient
 
 
@@ -72,3 +73,26 @@ class AuthFlowTests(TestCase):
         resp = self.client.get('/api/v1/auth/me/')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['user']['username'], 'testuser')
+
+    def test_public_registration_always_creates_patient(self):
+        resp = self.register(role='DOCTOR')
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.data['role'], RoleChoices.PATIENT)
+
+    def test_admin_can_create_and_delete_doctor(self):
+        admin = User.objects.create_user(username='admin', email='admin@example.com', password='AdminPass123!', role=RoleChoices.ADMIN)
+        self.client.force_authenticate(admin)
+        created = self.client.post('/api/v1/auth/admin/users/', {
+            'username': 'newdoctor', 'email': 'doctor@example.com', 'password': 'DoctorPass123!', 'role': RoleChoices.DOCTOR,
+        }, format='json')
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(created.data['role'], RoleChoices.DOCTOR)
+        deleted = self.client.delete(f"/api/v1/auth/admin/users/{created.data['id']}/")
+        self.assertEqual(deleted.status_code, 204)
+        self.assertFalse(User.objects.filter(username='newdoctor').exists())
+
+    def test_non_admin_cannot_manage_users(self):
+        self.register()
+        self.client.force_authenticate(User.objects.get(username='testuser'))
+        resp = self.client.get('/api/v1/auth/admin/users/')
+        self.assertEqual(resp.status_code, 403)

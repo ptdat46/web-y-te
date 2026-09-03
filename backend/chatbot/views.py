@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from accounts.permissions import IsPatientOrDoctor
 from care.audit import log_audit
 from care.models import AuditAction
 from .models import ChatConversation, ChatMessage, MessageRole
@@ -31,7 +32,7 @@ class ConversationViewSet(
     * DELETE /chat/conversations/{id}/         -> delete a conversation
     """
     serializer_class = ChatConversationSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsPatientOrDoctor]
 
     def get_queryset(self):
         return ChatConversation.objects.filter(user=self.request.user).prefetch_related('messages')
