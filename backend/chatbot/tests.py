@@ -6,29 +6,19 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from accounts.models import RoleChoices, User
-from chatbot.services import contains_red_flag, generate_reply
+from chatbot.services import generate_reply
 
 
-class RedFlagDetectionTests(TestCase):
-    def test_common_red_flags(self):
-        for text in ['đau ngực', 'khó thở', 'yếu nửa người', 'nói khó', 'ngất', 'đau bụng dữ dội']:
-            self.assertTrue(contains_red_flag(text), f'expected red flag: {text}')
 
-    def test_normal_symptoms_are_not_flags(self):
-        for text in ['sốt nhẹ', 'ho vài ngày', 'đau đầu nhẹ', 'ngứa da']:
-            self.assertFalse(contains_red_flag(text), f'not a red flag: {text}')
-
-    def test_generate_reply_returns_emergency_for_flags(self):
-        reply, flag = generate_reply('Tôi đau ngực và khó thở', [])
-        self.assertTrue(flag)
-        self.assertIn('115', reply)
-
-    def test_generate_reply_mock_fallback_when_ollama_down(self):
-        with patch('chatbot.services.call_ollama', side_effect=Exception('down')):
-            reply, flag = generate_reply('Tôi bị sốt và ho 2 ngày', [])
-            self.assertFalse(flag)
-            self.assertIn('không thay thế', reply)
-
+class LlmRoutingTests(TestCase):
+    @patch('chatbot.services.call_ollama', return_value='Cần đánh giá thêm.')
+    def test_symptoms_are_sent_to_model(self, call_ollama):
+        reply, flag = generate_reply('Tôi đau ngực và khó thở', [], 'SpO2: 88%')
+        self.assertEqual(reply, 'Cần đánh giá thêm.')
+        self.assertFalse(flag)
+        messages = call_ollama.call_args.args[0]
+        self.assertIn('Tôi đau ngực và khó thở', messages[-1]['content'])
+        self.assertIn('SpO2: 88%', messages[1]['content'])
 
 class ChatbotApiTests(TestCase):
     def setUp(self):
