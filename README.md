@@ -155,8 +155,8 @@ Nếu project đã có sẵn, chỉ cần:
 Set-Location H:\web-y-te
 ```
 
-Không xóa hoặc đổi tên `backend\disease_translations.csv` và
-`backend\symptom_translations.csv`; đây là dữ liệu đầu vào cho catalog. Nếu repository
+Không xóa hoặc đổi tên `disease_translations.csv` và
+`symptom_translations.csv` ở thư mục gốc project; đây là dữ liệu đầu vào cho catalog. Nếu repository
 đang thiếu một trong hai file, cần khôi phục file CSV tương ứng trước khi chạy
 `import_catalog`.
 
@@ -400,8 +400,8 @@ backend/
 | `catalog/views.py` | API đọc công khai, tìm kiếm theo tên Anh/Việt |
 | `catalog/management/commands/import_catalog.py` | Import/update dữ liệu từ hai file CSV |
 | `catalog/migrations/` | Lịch sử schema catalog |
-| `backend/disease_translations.csv` | Dữ liệu tên bệnh Anh/Việt |
-| `backend/symptom_translations.csv` | Dữ liệu tên triệu chứng Anh/Việt |
+| `disease_translations.csv` | Dữ liệu tên bệnh Anh/Việt |
+| `symptom_translations.csv` | Dữ liệu tên triệu chứng Anh/Việt |
 
 ### `doctors`: bác sĩ và kết nối
 
@@ -546,7 +546,8 @@ Dùng `npm.cmd` thay cho `npm`, ví dụ `npm.cmd install` và `npm.cmd run dev`
 
 ### `CSV file not found`
 
-Kiểm tra hai file catalog trong `backend/`. Lệnh import local tự tìm CSV ở thư mục này;
+Kiểm tra hai file catalog trong thư mục gốc project. Lệnh import tự tìm cả hai CSV theo thứ tự
+`/data/catalog` (Docker), thư mục gốc project (local), rồi `backend/`;
 hãy truyền đường dẫn thủ công nếu đặt file ở nơi khác:
 
 ```powershell

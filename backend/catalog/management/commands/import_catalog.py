@@ -11,11 +11,17 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         project_root = Path(__file__).resolve().parents[4]
         backend_root = Path(__file__).resolve().parents[3]
-        catalog_root = Path('/data/catalog')
-        if not catalog_root.exists():
-            catalog_root = backend_root
-        if not (catalog_root / 'disease_translations.csv').exists():
-            catalog_root = project_root
+        catalog_roots = (Path('/data/catalog'), project_root, backend_root)
+        catalog_root = next(
+            (
+                root for root in catalog_roots
+                if all((root / filename).is_file() for filename in (
+                    'disease_translations.csv',
+                    'symptom_translations.csv',
+                ))
+            ),
+            project_root,
+        )
         parser.add_argument('--diseases', default=catalog_root / 'disease_translations.csv')
         parser.add_argument('--symptoms', default=catalog_root / 'symptom_translations.csv')
 
