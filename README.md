@@ -1,7 +1,7 @@
 # Health Care Monitor
 
 Nền tảng theo dõi sức khỏe cho bệnh nhân, bác sĩ và quản trị viên.
-Project chạy local bằng **MySQL + Django + React/Vite**.
+Project chạy local bằng **SQLite + Django + React/Vite**, không cần cài MySQL.
 
 ## 1. Tổng quan hệ thống
 
@@ -9,7 +9,7 @@ Project chạy local bằng **MySQL + Django + React/Vite**.
 flowchart LR
     Browser[Trình duyệt] -->|localhost:5173| FE[Frontend React + Vite]
     FE -->|Vite proxy /api| BE[Backend Django REST API]
-    BE -->|localhost:3306| DB[(MySQL)]
+    BE -->|file backend/db.sqlite3| DB[(SQLite)]
     BE -. tùy chọn .-> AI[Ollama local]
 ```
 
@@ -17,7 +17,7 @@ flowchart LR
 |---|---|---:|---|
 | Frontend | React, TypeScript, Vite, Tailwind CSS | `5173` | Giao diện và thao tác của người dùng |
 | Backend | Python, Django, Django REST Framework, SimpleJWT | `8000` | API, xác thực, phân quyền, nghiệp vụ sức khỏe |
-| Database | MySQL 8.0+ | `3306` | Lưu tài khoản, hồ sơ, sinh hiệu, cảnh báo, audit và chatbot |
+| Database | SQLite (mặc định Django) | file `backend/db.sqlite3` | Lưu tài khoản, hồ sơ, sinh hiệu, cảnh báo, audit và chatbot |
 | Ollama | Tùy chọn | `11434` | Chạy LLM local cho chatbot; không có vẫn dùng phản hồi dự phòng |
 
 Luồng request:
@@ -25,7 +25,7 @@ Luồng request:
 1. Trình duyệt mở frontend tại `http://localhost:5173`.
 2. Frontend gọi các URL dạng `/api/v1/...`.
 3. Vite chuyển request `/api` sang Django tại `http://localhost:8000`.
-4. Django kiểm tra JWT, quyền truy cập, đọc/ghi MySQL rồi trả JSON.
+4. Django kiểm tra JWT, quyền truy cập, đọc/ghi SQLite rồi trả JSON.
 
 ## 2. Chức năng chính
 
@@ -44,13 +44,15 @@ Luồng request:
 Hướng dẫn dưới đây dành cho **Windows 10/11 64-bit và PowerShell**.
 
 - RAM tối thiểu 4 GB, khuyến nghị 8 GB.
-- Khoảng trống tối thiểu 3 GB cho Python, Node.js, dependencies và MySQL.
+- Khoảng trống tối thiểu 1 GB cho Python, Node.js và dependencies.
 - Internet trong lúc cài package.
 - Python **3.12 trở lên**.
-- MySQL Server **8.0 trở lên**.
 - Node.js **20 trở lên** và npm.
 - Git, nếu lấy source từ repository.
 - VS Code, nếu muốn mở và phát triển project; không bắt buộc để chạy.
+
+Không cần cài MySQL. Database local dùng **SQLite** mặc định của Django, tự sinh file
+`backend/db.sqlite3` ngay lần đầu chạy migration.
 
 ## 4. Cài công cụ từ đầu
 
@@ -65,7 +67,7 @@ Trong trình cài đặt, giữ lựa chọn mặc định. Mở PowerShell mớ
 git --version
 ```
 
-Nếu source đã có sẵn trong `H:\web-y-te`, bỏ qua bước clone.
+Nếu source đã có sẵn, bỏ qua bước clone.
 
 ### 4.2. Cài Python
 
@@ -85,43 +87,7 @@ python -m pip --version
 Nếu lệnh `python` mở Microsoft Store, tắt App execution aliases cho Python trong Windows
 Settings hoặc dùng đường dẫn Python đã cài.
 
-### 4.3. Cài MySQL Server
-
-1. Tải **MySQL Installer for Windows** từ `https://dev.mysql.com/downloads/installer/`.
-2. Chọn bản **Community**.
-3. Chọn setup type **Server only** hoặc **Developer Default**.
-4. Giữ MySQL Server 8.x và MySQL Shell/Workbench nếu muốn có giao diện quản lý.
-5. Chọn authentication mặc định của MySQL 8.
-6. Đặt mật khẩu root. Nhớ mật khẩu này để tạo database ở bước sau.
-7. Giữ Windows Service chạy tự động, thường có tên `MySQL80`.
-8. Hoàn thành installer, mở PowerShell mới.
-
-Kiểm tra client:
-
-```powershell
-mysql --version
-```
-
-Nếu `mysql` không được nhận diện, mở **MySQL 8.0 Command Line Client** từ Start Menu,
-hoặc thêm thư mục tương tự sau vào PATH:
-
-```text
-C:\Program Files\MySQL\MySQL Server 8.0\bin
-```
-
-Kiểm tra service:
-
-```powershell
-Get-Service MySQL80
-```
-
-Nếu service chưa chạy:
-
-```powershell
-Start-Service MySQL80
-```
-
-### 4.4. Cài Node.js
+### 4.3. Cài Node.js
 
 1. Tải Node.js LTS 20 trở lên từ `https://nodejs.org/en/download`.
 2. Chạy installer, giữ lựa chọn mặc định và để installer thêm Node vào PATH.
@@ -137,82 +103,59 @@ npm.cmd --version
 Project dùng `npm.cmd` trong PowerShell vì một số máy chặn script `npm.ps1` theo
 Execution Policy.
 
-## 5. Lấy source và tạo database
+## 5. Lấy source
 
 ### 5.1. Lấy source
+
+Thay chỗ `<đường_dẫn_clone>` bên dưới bằng nơi bạn thực sự clone project về (ví dụ
+`C:\Users\<tên_bạn>\Documents\web-y-te`). Tất cả lệnh sau đều chạy **từ thư mục gốc
+project** — nơi chứa `backend\`, `frontend\` và hai file CSV.
 
 Nếu repository ở Git:
 
 ```powershell
-Set-Location H:\
+Set-Location <đường_dẫn_clone>
 git clone <URL_REPOSITORY> web-y-te
-Set-Location H:\web-y-te
+Set-Location web-y-te
 ```
 
 Nếu project đã có sẵn, chỉ cần:
 
 ```powershell
-Set-Location H:\web-y-te
+Set-Location <đường_dẫn_clone>\web-y-te
 ```
 
-Không xóa hoặc đổi tên `disease_translations.csv` và
-`symptom_translations.csv` ở thư mục gốc project; đây là dữ liệu đầu vào cho catalog. Nếu repository
-đang thiếu một trong hai file, cần khôi phục file CSV tương ứng trước khi chạy
-`import_catalog`.
+Không xóa hoặc đổi tên `disease_translations.csv` và `symptom_translations.csv`; đây là
+dữ liệu đầu vào cho catalog. Lệnh `import_catalog` tự tìm hai file này ở thư mục gốc
+project hoặc thư mục `backend\`. Nếu repository đang thiếu một trong hai file, cần khôi
+phục file CSV tương ứng trước khi chạy `import_catalog`.
 
-### 5.2. Tạo database và user
-
-Mở **MySQL 8.0 Command Line Client**, nhập mật khẩu root đã đặt lúc cài, rồi chạy:
-
-```sql
-CREATE DATABASE healthcare CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'healthcare'@'localhost' IDENTIFIED BY 'healthcare';
-GRANT ALL PRIVILEGES ON healthcare.* TO 'healthcare'@'localhost';
-FLUSH PRIVILEGES;
-EXIT;
-```
-
-Nếu database hoặc user đã tồn tại, dùng phiên bản an toàn hơn:
-
-```sql
-CREATE DATABASE IF NOT EXISTS healthcare CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER IF NOT EXISTS 'healthcare'@'localhost' IDENTIFIED BY 'healthcare';
-GRANT ALL PRIVILEGES ON healthcare.* TO 'healthcare'@'localhost';
-FLUSH PRIVILEGES;
-```
-
-Thông tin mặc định của backend:
-
-| Biến | Giá trị local |
-|---|---|
-| `MYSQL_DATABASE` | `healthcare` |
-| `MYSQL_USER` | `healthcare` |
-| `MYSQL_PASSWORD` | `healthcare` |
-| `MYSQL_HOST` | `localhost` |
-| `MYSQL_PORT` | `3306` |
+Database local dùng SQLite mặc định nên **không cần tạo database trước**; file
+`backend/db.sqlite3` được Django tự tạo khi chạy migration.
 
 ## 6. Cài và chạy backend
 
-Mở PowerShell thứ nhất:
+Mở PowerShell thứ nhất. **Từ thư mục gốc project** (nơi chứa thư mục `backend`) vào
+`backend`, tạo virtual environment ở **ngay thư mục gốc** (`..\.venv`). Lệnh
+`..\.venv\Scripts\python.exe` là Python bên trong venv vừa tạo:
 
 ```powershell
-Set-Location H:\web-y-te\backend
+Set-Location backend
 python -m venv ..\.venv
 ..\.venv\Scripts\python.exe -m pip install --upgrade pip
 ..\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-Thiết lập biến môi trường cho cửa sổ PowerShell hiện tại:
+`requirements.txt` đã có sẵn Django, Django REST Framework, SimpleJWT, CORS headers và
+Gunicorn nên **không cần cài Django riêng**; lệnh trên cài toàn bộ dependency của backend.
+
+Thiết lập biến môi trường cho cửa sổ PowerShell hiện tại (không cần biến `MYSQL_*`; khi
+không set `MYSQL_HOST`, Django tự dùng SQLite với file `backend/db.sqlite3`):
 
 ```powershell
 $env:DJANGO_DEBUG="1"
 $env:DJANGO_SECRET_KEY="local-dev-key-change-me"
 $env:DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1"
-$env:MYSQL_DATABASE="healthcare"
-$env:MYSQL_USER="healthcare"
-$env:MYSQL_PASSWORD="healthcare"
-$env:MYSQL_HOST="localhost"
-$env:MYSQL_PORT="3306"
 $env:CORS_ALLOWED_ORIGINS="http://localhost:5173,http://127.0.0.1:5173"
 $env:CSRF_TRUSTED_ORIGINS="http://localhost:5173,http://127.0.0.1:5173"
 ```
@@ -246,7 +189,7 @@ cơ chế quản lý environment riêng khi triển khai thật.
 | `DJANGO_DEBUG` | Không | `1` cho local; production phải là `0` |
 | `DJANGO_SECRET_KEY` | Có khi `DEBUG=0` | Secret key của Django |
 | `DJANGO_ALLOWED_HOSTS` | Có khi `DEBUG=0` | Host được phép truy cập |
-| `MYSQL_*` | Không | Cấu hình kết nối MySQL |
+| `MYSQL_*` | Không | Chỉ cần khi chuyển sang MySQL; bỏ trống thì dùng SQLite local |
 | `CORS_ALLOWED_ORIGINS` | Không | Origin frontend được phép gọi API |
 | `CSRF_TRUSTED_ORIGINS` | Không | Origin tin cậy cho CSRF |
 | `DRF_ANON_RATE` | Không | Rate limit request chưa đăng nhập |
@@ -254,10 +197,10 @@ cơ chế quản lý environment riêng khi triển khai thật.
 
 ## 7. Cài và chạy frontend
 
-Mở PowerShell thứ hai:
+Mở PowerShell thứ hai **từ thư mục gốc project**, vào `frontend` rồi cài và chạy:
 
 ```powershell
-Set-Location H:\web-y-te\frontend
+Set-Location frontend
 npm.cmd install
 npm.cmd run dev -- --host 127.0.0.1
 ```
@@ -316,7 +259,10 @@ tại tới Ollama. Chatbot chỉ hỗ trợ định hướng, không thay thế
 ### Backend
 
 ```powershell
-Set-Location H:\web-y-te\backend
+Từ thư mục gốc project:
+
+```powershell
+Set-Location backend
 ..\.venv\Scripts\python.exe manage.py check
 ..\.venv\Scripts\python.exe manage.py test accounts doctors chatbot core
 ```
@@ -324,7 +270,10 @@ Set-Location H:\web-y-te\backend
 ### Frontend
 
 ```powershell
-Set-Location H:\web-y-te\frontend
+Từ thư mục gốc project:
+
+```powershell
+Set-Location frontend
 npm.cmd run build
 npx.cmd tsc --noEmit
 ```
@@ -362,7 +311,7 @@ backend/
 |---|---|
 | `backend/manage.py` | Điểm vào cho lệnh Django: migrate, test, runserver, seed |
 | `backend/requirements.txt` | Danh sách package Python cần cài |
-| `backend/config/settings.py` | Cấu hình Django, MySQL, JWT/DRF, CORS, cookie và security flags |
+| `backend/config/settings.py` | Cấu hình Django, database (SQLite mặc định; MySQL nếu set `MYSQL_HOST`), JWT/DRF, CORS, cookie và security flags |
 | `backend/config/urls.py` | Gắn health endpoint, URL của từng app và router catalog |
 | `backend/config/asgi.py` | Điểm vào ASGI cho server async/deployment |
 | `backend/config/wsgi.py` | Điểm vào WSGI cho Gunicorn hoặc server WSGI |
@@ -509,22 +458,18 @@ $env:DJANGO_DEBUG="1"
 $env:DJANGO_SECRET_KEY="local-dev-key-change-me"
 ```
 
-### `Can't connect to MySQL server`
+### `OperationalError: no such table` (SQLite)
 
-Kiểm tra service và port:
+Chưa chạy migration. Chạy:
 
 ```powershell
-Get-Service MySQL80
-Test-NetConnection localhost -Port 3306
+..\.venv\Scripts\python.exe manage.py migrate
 ```
 
-Nếu service dừng, chạy `Start-Service MySQL80`. Kiểm tra lại `MYSQL_USER`,
-`MYSQL_PASSWORD`, `MYSQL_DATABASE`, `MYSQL_HOST`, `MYSQL_PORT`.
+### `unable to open database file` (SQLite)
 
-### `mysql is not recognized`
-
-MySQL chưa có trong PATH. Dùng MySQL Command Line Client từ Start Menu hoặc thêm thư mục
-`C:\Program Files\MySQL\MySQL Server 8.0\bin` vào PATH rồi mở PowerShell mới.
+Thường do quyền ghi file. Chạy backend từ thư mục `backend` để file `db.sqlite3` được tạo
+đúng chỗ, và đảm bảo thư mục project có quyền ghi.
 
 ### `npm.ps1 cannot be loaded`
 
@@ -537,18 +482,20 @@ Dùng `npm.cmd` thay cho `npm`, ví dụ `npm.cmd install` và `npm.cmd run dev`
 
 ### `CSV file not found`
 
-Kiểm tra hai file catalog trong thư mục gốc project. Lệnh import dùng hai file này mặc định;
-hãy truyền đường dẫn thủ công nếu đặt file ở nơi khác:
+Lệnh `import_catalog` tự tìm file ở hai nơi: thư mục gốc project và thư mục `backend\`.
+Nếu bạn đặt file ở nơi khác, truyền đường dẫn thủ công:
 
 ```powershell
 ..\.venv\Scripts\python.exe manage.py import_catalog `
-  --diseases "D:\data\disease_translations.csv" `
-  --symptoms "D:\data\symptom_translations.csv"
+  --diseases "C:\path\to\disease_translations.csv" `
+  --symptoms "C:\path\to\symptom_translations.csv"
 ```
 
 ## 14. Lưu ý bảo mật và y tế
 
 - Không đưa mật khẩu demo, `DJANGO_SECRET_KEY` local hoặc dữ liệu bệnh nhân thật lên Git.
+- File `backend/db.sqlite3` đã nằm trong `.gitignore`; mỗi máy local tự sinh database riêng
+  khi chạy migration.
 - Production cần `DJANGO_DEBUG=0`, secret key riêng, HTTPS, cookie secure, backup mã hóa,
   MFA, chính sách retention và rà soát object-level authorization.
 - Đây là nền tảng kỹ thuật, không phải công cụ chẩn đoán. Không dùng chatbot hoặc cảnh báo

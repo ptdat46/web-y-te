@@ -21,7 +21,7 @@ export default function RecordsPage() {
     prescription: '',
   })
 
-  const canWrite = user?.role === 'DOCTOR'
+  const canWrite = user?.role === 'PATIENT' || user?.role === 'DOCTOR'
 
   const load = useCallback(async () => {
     try {
@@ -76,7 +76,7 @@ export default function RecordsPage() {
           <p className="text-sm text-teal-600">
             {user?.role === 'DOCTOR'
               ? 'Xem và cập nhật hồ sơ của các bệnh nhân đang quản lý.'
-              : 'Lịch sử bệnh án của bạn.'}
+              : 'Xem và tự thêm hồ sơ bệnh án của bạn.'}
           </p>
         </div>
         {canWrite && (

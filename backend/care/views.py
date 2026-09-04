@@ -83,7 +83,7 @@ class MedicalRecordViewSet(
             status=ConnectionStatus.APPROVED,
         ).exists():
             raise PermissionDenied('You cannot create a record for this patient.')
-        record = serializer.save(patient=patient, doctor=user)
+        record = serializer.save(patient=patient, doctor=user if user.role == 'DOCTOR' else None)
         log_audit(
             self.request,
             actor=user,

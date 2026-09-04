@@ -36,7 +36,10 @@ MIDDLEWARE = ['corsheaders.middleware.CorsMiddleware', 'django.middleware.securi
 ROOT_URLCONF = 'config.urls'
 TEMPLATES = [{'BACKEND': 'django.template.backends.django.DjangoTemplates', 'DIRS': [], 'APP_DIRS': True, 'OPTIONS': {'context_processors': ['django.template.context_processors.request', 'django.contrib.auth.context_processors.auth', 'django.contrib.messages.context_processors.messages']}}]
 WSGI_APPLICATION = 'config.wsgi.application'
-DATABASES = {'default': {'ENGINE': 'django.db.backends.mysql', 'NAME': os.getenv('MYSQL_DATABASE', 'healthcare'), 'USER': os.getenv('MYSQL_USER', 'healthcare'), 'PASSWORD': os.getenv('MYSQL_PASSWORD', 'healthcare'), 'HOST': os.getenv('MYSQL_HOST', 'localhost'), 'PORT': os.getenv('MYSQL_PORT', '3306')}}
+if os.getenv('MYSQL_HOST'):
+    DATABASES = {'default': {'ENGINE': 'django.db.backends.mysql', 'NAME': os.getenv('MYSQL_DATABASE', 'healthcare'), 'USER': os.getenv('MYSQL_USER', 'healthcare'), 'PASSWORD': os.getenv('MYSQL_PASSWORD', 'healthcare'), 'HOST': os.environ['MYSQL_HOST'], 'PORT': os.getenv('MYSQL_PORT', '3306')}}
+else:
+    DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': BASE_DIR / 'db.sqlite3'}}
 LANGUAGE_CODE = 'vi'
 TIME_ZONE = 'UTC'
 USE_I18N = True

@@ -60,6 +60,31 @@ class MedicalRecordAuthorizationTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data['patient']['id'], self.patient_a.id)
 
+    def test_patient_created_record_has_no_doctor(self):
+        response = self.patient_client.post(
+            '/api/v1/records/',
+            {'title': 'Self-reported record'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 201)
+        record = MedicalRecord.objects.get(title='Self-reported record')
+        self.assertIsNone(record.doctor_id)
+        self.assertIsNone(response.data['doctor'])
+
+    def test_connected_doctor_sees_records_created_before_connection(self):
+        record = MedicalRecord.objects.create(
+            patient=self.patient_a,
+            title='Earlier record',
+        )
+        DoctorPatientConnection.objects.create(
+            doctor=self.doctor_profile,
+            patient=self.patient_a,
+            status=ConnectionStatus.APPROVED,
+        )
+        response = self.doctor_client.get('/api/v1/records/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(record.id, [item['id'] for item in response.data])
+
     def test_record_patient_cannot_change(self):
         record = MedicalRecord.objects.create(
             patient=self.patient_a,
