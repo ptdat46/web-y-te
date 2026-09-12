@@ -36,7 +36,7 @@ export default function RegisterPage() {
         first_name: form.first_name.trim(),
         last_name: form.last_name.trim(),
       })
-      navigate('/app', { replace: true })
+      navigate('/login?registered=1', { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Đăng ký thất bại')
     } finally {

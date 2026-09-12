@@ -86,10 +86,22 @@ export function Card({ title, action, children, className = '' }: { title?: stri
 
 export function formatDate(iso: string) {
   return new Date(iso).toLocaleString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   })
+}
+
+export function ConfirmDialog({ open, title, message, confirmLabel = 'Xác nhận', onConfirm, onCancel }: {
+  open: boolean; title: string; message: string; confirmLabel?: string; onConfirm: () => void; onCancel: () => void
+}) {
+  if (!open) return null
+  return <div className="fixed inset-0 z-50 grid place-items-center bg-teal-950/40 p-4" role="dialog" aria-modal="true">
+    <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+      <h2 className="text-lg font-semibold text-teal-950">{title}</h2>
+      <p className="mt-2 text-sm text-teal-700">{message}</p>
+      <div className="mt-6 flex justify-end gap-3">
+        <button onClick={onCancel} className="rounded-xl border border-teal-200 px-4 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-50">Hủy</button>
+        <button onClick={onConfirm} className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">{confirmLabel}</button>
+      </div>
+    </div>
+  </div>
 }

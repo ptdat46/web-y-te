@@ -19,7 +19,7 @@ export function isLoggedIn() {
   return accessToken !== null
 }
 
-async function refreshAccessToken(): Promise<string> {
+export async function refreshAccessToken(): Promise<string> {
   // Deduplicate concurrent refresh calls
   if (!refreshPromise) {
     refreshPromise = fetch(`${BASE_URL}/auth/refresh/`, {
@@ -59,6 +59,8 @@ interface RequestOptions {
   method?: string
   body?: unknown
   auth?: boolean
+  /** Pass a FormData body: sends it raw without JSON headers. */
+  formData?: FormData
 }
 
 /**
@@ -68,16 +70,18 @@ interface RequestOptions {
  */
 export async function api<T = unknown>(
   path: string,
-  { method = 'GET', body, auth = true }: RequestOptions = {},
+  { method = 'GET', body, auth = true, formData }: RequestOptions = {},
 ): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const headers: Record<string, string> = {}
+  if (!formData) headers['Content-Type'] = 'application/json'
   if (auth && accessToken) headers.Authorization = `Bearer ${accessToken}`
+  const payloadBody = formData ?? (body !== undefined ? JSON.stringify(body) : undefined)
 
   let res = await fetch(`${BASE_URL}${path}`, {
     method,
     headers,
     credentials: 'include',
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: payloadBody,
   })
 
   if (res.status === 401 && auth && accessToken) {
@@ -88,7 +92,7 @@ export async function api<T = unknown>(
         method,
         headers,
         credentials: 'include',
-        body: body !== undefined ? JSON.stringify(body) : undefined,
+        body: payloadBody,
       })
     } catch {
       // Refresh failed — caller handles logout
@@ -119,9 +123,52 @@ export const http = {
   get: <T = unknown>(path: string, opts?: RequestOptions) => api<T>(path, { ...opts, method: 'GET' }),
   post: <T = unknown>(path: string, body?: unknown, opts?: RequestOptions) =>
     api<T>(path, { ...opts, method: 'POST', body }),
+  postForm: <T = unknown>(path: string, formData: FormData, opts?: RequestOptions) =>
+    api<T>(path, { ...opts, method: 'POST', formData }),
   patch: <T = unknown>(path: string, body?: unknown, opts?: RequestOptions) =>
     api<T>(path, { ...opts, method: 'PATCH', body }),
   put: <T = unknown>(path: string, body?: unknown, opts?: RequestOptions) =>
     api<T>(path, { ...opts, method: 'PUT', body }),
   del: <T = unknown>(path: string, opts?: RequestOptions) => api<T>(path, { ...opts, method: 'DELETE' }),
+}
+
+/**
+ * Download a file from the API (e.g. CSV, PDF). Automatically refreshes the
+ * access token on a 401 response. Throws ApiClientError on failure.
+ */
+export async function downloadBlob(path: string, filename: string): Promise<void> {
+  const headers: Record<string, string> = {}
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`
+
+  const doFetch = async () =>
+    fetch(`${BASE_URL}${path}`, {
+      method: 'GET',
+      headers,
+      credentials: 'include',
+    })
+
+  let res = await doFetch()
+  if (res.status === 401 && accessToken) {
+    try {
+      const newToken = await refreshAccessToken()
+      headers.Authorization = `Bearer ${newToken}`
+      res = await doFetch()
+    } catch {
+      // Fall through and surface the original 401 below.
+    }
+  }
+  if (!res.ok) {
+    const text = await res.text()
+    throw new ApiClientError(res.status, text || `Tải file thất bại (${res.status}).`)
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  // Give the browser a tick to start the download before revoking.
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

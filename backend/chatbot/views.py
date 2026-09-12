@@ -3,8 +3,9 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from accounts.permissions import IsPatientOrDoctor
 from care.audit import log_audit
-from care.models import AuditAction
+from care.models import Alert, AuditAction, MedicalRecord, VitalSign
 from .models import ChatConversation, ChatMessage, MessageRole
 from .serializers import (
     ChatConversationDetailSerializer,
@@ -12,6 +13,33 @@ from .serializers import (
     ChatSendSerializer,
 )
 from .services import generate_reply
+
+def build_patient_context(user):
+    records = MedicalRecord.objects.filter(patient=user).select_related('disease')[:50]
+    vitals = VitalSign.objects.filter(patient=user)[:50]
+    alerts = Alert.objects.filter(patient=user)[:50]
+    lines = [f'Người dùng: {user.get_full_name() or user.username}; vai trò: {user.role}', 'Bệnh án:']
+    lines += [
+        f'- {record.created_at.isoformat()} | {record.title} | bệnh: '
+        f'{record.disease.name_vi if record.disease else ""} | ghi chú: {record.notes} | '
+        f'chẩn đoán: {record.diagnosis} | đơn thuốc: {record.prescription}'
+        for record in records
+    ]
+    lines.append('Sinh hiệu:')
+    lines += [
+        f'- {vital.recorded_at.isoformat()} | nhiệt độ: {vital.temperature}; '
+        f'nhịp tim: {vital.heart_rate}; huyết áp: '
+        f'{vital.blood_pressure_sys}/{vital.blood_pressure_dia}; SpO2: '
+        f'{vital.oxygen_saturation}; ghi chú: {vital.notes}'
+        for vital in vitals
+    ]
+    lines.append('Cảnh báo:')
+    lines += [
+        f'- {alert.created_at.isoformat()} | {alert.severity} | {alert.status} | '
+        f'{alert.title}: {alert.message}'
+        for alert in alerts
+    ]
+    return '\n'.join(lines)
 
 
 class ConversationViewSet(
@@ -31,7 +59,7 @@ class ConversationViewSet(
     * DELETE /chat/conversations/{id}/         -> delete a conversation
     """
     serializer_class = ChatConversationSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsPatientOrDoctor]
 
     def get_queryset(self):
         return ChatConversation.objects.filter(user=self.request.user).prefetch_related('messages')
@@ -73,7 +101,11 @@ class ConversationViewSet(
             for m in conversation.messages.exclude(pk=user_message.pk)
         ]
 
-        reply_text, red_flag = generate_reply(user_text, history)
+        reply_text, red_flag = generate_reply(
+            user_text,
+            history,
+            patient_context=build_patient_context(request.user),
+        )
 
         assistant_message = ChatMessage.objects.create(
             conversation=conversation,

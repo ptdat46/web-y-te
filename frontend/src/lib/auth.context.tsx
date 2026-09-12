@@ -5,7 +5,7 @@ import type { User } from '../lib/types'
 interface AuthState {
   user: User | null
   loading: boolean
-  login: (username: string, password: string) => Promise<void>
+  login: (identifier: string, password: string) => Promise<User>
   register: (data: {
     username: string
     email: string
@@ -14,6 +14,7 @@ interface AuthState {
     last_name: string
   }) => Promise<void>
   logout: () => Promise<void>
+  setUser: (user: User | null) => void
 }
 
 const AuthContext = createContext<AuthState | null>(null)
@@ -41,14 +42,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const login = useCallback(async (username: string, password: string) => {
+  const login = useCallback(async (identifier: string, password: string) => {
+    const loginField = identifier.includes('@') ? { email: identifier } : { username: identifier }
     const data = await http.post<{ user: User; access: string }>(
       '/auth/login/',
-      { username, password },
+      { ...loginField, password },
       { auth: false },
     )
     setAccessToken(data.access)
     setUser(data.user)
+    return data.user
   }, [])
 
   const register = useCallback(
@@ -60,8 +63,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       last_name: string
     }) => {
       await http.post('/auth/register/', data, { auth: false })
-      // Auto-login after successful registration
-      await login(data.username, data.password)
     },
     [login],
   )
@@ -78,8 +79,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const value = useMemo(
-    () => ({ user, loading, login, register, logout }),
-    [user, loading, login, register, logout],
+    () => ({ user, loading, login, register, logout, setUser }),
+    [user, loading, login, register, logout, setUser],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

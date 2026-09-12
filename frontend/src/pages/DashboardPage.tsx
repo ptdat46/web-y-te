@@ -3,26 +3,39 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../lib/auth.context'
 import { http } from '../lib/api'
 import type { Alert, Connection, VitalSign } from '../lib/types'
-import { Badge, Card, EmptyState, SeverityBadge, Spinner, StatCard, StatusBadge, formatDate } from '../components/ui'
+import { Card, EmptyState, SeverityBadge, Spinner, StatCard, StatusBadge } from '../components/ui'
+
+interface AdminDashboard {
+  users: { total: number; active: number; locked: number; patients: number; doctors: number }
+  doctors: { total: number; verified: number; pending_verification: number }
+  connections: { total: number; approved: number; pending: number }
+  alerts: { total: number; open: number }
+  medical_records: number
+}
 
 export default function DashboardPage() {
   const { user } = useAuth()
   const [vitals, setVitals] = useState<VitalSign[]>([])
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [connections, setConnections] = useState<Connection[]>([])
+  const [adminStats, setAdminStats] = useState<AdminDashboard | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function load() {
       try {
-        const [v, a, c] = await Promise.all([
-          http.get<VitalSign[]>('/vitals/').catch(() => []),
-          http.get<Alert[]>('/alerts/').catch(() => []),
-          http.get<Connection[]>('/connections/').catch(() => []),
-        ])
-        setVitals(v)
-        setAlerts(a)
-        setConnections(c)
+        if (user?.role === 'ADMIN') {
+          setAdminStats(await http.get<AdminDashboard>('/auth/admin/dashboard/'))
+        } else {
+          const [v, a, c] = await Promise.all([
+            http.get<VitalSign[]>('/vitals/').catch(() => []),
+            http.get<Alert[]>('/alerts/').catch(() => []),
+            http.get<Connection[]>('/connections/').catch(() => []),
+          ])
+          setVitals(v)
+          setAlerts(a)
+          setConnections(c)
+        }
       } finally {
         setLoading(false)
       }
@@ -50,18 +63,37 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Cảnh báo mở" value={openAlerts} accent={openAlerts > 0} />
-        <StatCard label="Kết nối đã duyệt" value={approvedConns} />
-        {user.role === 'DOCTOR' && <StatCard label="Yêu cầu chờ xử lý" value={pendingConns} accent={pendingConns > 0} />}
-        <StatCard label="Lần ghi chỉ số" value={vitals.length} />
-      </div>
+      {user.role === 'ADMIN' && adminStats ? (
+        <>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <StatCard label="Người dùng" value={adminStats.users.total} />
+            <StatCard label="Tài khoản bị khóa" value={adminStats.users.locked} accent={adminStats.users.locked > 0} />
+            <StatCard label="Bác sĩ chờ xác minh" value={adminStats.doctors.pending_verification} accent={adminStats.doctors.pending_verification > 0} />
+            <StatCard label="Cảnh báo mở" value={adminStats.alerts.open} accent={adminStats.alerts.open > 0} />
+          </div>
+          <Card title="Tổng quan hệ thống">
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              <div><p className="text-xs text-teal-500">Bệnh nhân / Bác sĩ</p><p className="text-xl font-bold text-teal-950">{adminStats.users.patients} / {adminStats.users.doctors}</p></div>
+              <div><p className="text-xs text-teal-500">Bác sĩ đã xác minh</p><p className="text-xl font-bold text-teal-950">{adminStats.doctors.verified}</p></div>
+              <div><p className="text-xs text-teal-500">Kết nối đã duyệt / chờ</p><p className="text-xl font-bold text-teal-950">{adminStats.connections.approved} / {adminStats.connections.pending}</p></div>
+              <div><p className="text-xs text-teal-500">Hồ sơ bệnh án</p><p className="text-xl font-bold text-teal-950">{adminStats.medical_records}</p></div>
+            </div>
+          </Card>
+        </>
+      ) : user.role !== 'ADMIN' && (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <StatCard label="Cảnh báo mở" value={openAlerts} accent={openAlerts > 0} />
+          <StatCard label="Kết nối đã duyệt" value={approvedConns} />
+          {user.role === 'DOCTOR' && <StatCard label="Yêu cầu chờ xử lý" value={pendingConns} accent={pendingConns > 0} />}
+          <StatCard label="Lần ghi chỉ số" value={vitals.length} />
+        </div>
+      )}
 
       {latest && user.role !== 'ADMIN' && (
         <Card title="Chỉ số mới nhất">
           <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
             <div><p className="text-xs text-teal-500">Nhiệt độ</p><p className="text-xl font-bold text-teal-950">{latest.temperature ?? '—'}°C</p></div>
-            <div><p className="text-xs text-teal-500">Nhịp tim</p><p className="text-xl font-bold text-teal-950">{latest.heart_rate ?? '—'} bpm</p></div>
+            <div><p className="text-xs text-teal-500">Nhịp tim</p><p className="text-xl font-bold text-teal-950">{latest.heart_rate ?? '—'} nhịp/phút</p></div>
             <div><p className="text-xs text-teal-500">Huyết áp</p><p className="text-xl font-bold text-teal-950">
               {latest.blood_pressure_sys || latest.blood_pressure_dia ? `${latest.blood_pressure_sys ?? '—'}/${latest.blood_pressure_dia ?? '—'}` : '—'}
             </p></div>

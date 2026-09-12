@@ -1,4 +1,6 @@
 from django.urls import include, path
+from django.conf import settings
+from django.conf.urls.static import static
 from core.views import health
 from rest_framework.routers import DefaultRouter
 from catalog.views import DiseaseViewSet, SymptomViewSet
@@ -13,5 +15,9 @@ urlpatterns = [
     path('api/v1/', include('doctors.urls')),
     path('api/v1/', include('care.urls')),
     path('api/v1/', include('chatbot.urls')),
+    path('api/v1/', include('messaging.urls')),
     path('api/v1/', include(router.urls)),
 ]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

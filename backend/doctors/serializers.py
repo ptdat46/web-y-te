@@ -18,7 +18,7 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'user_id', 'username', 'email',
             'specialty', 'hospital', 'address', 'phone',
-            'bio', 'years_of_experience', 'is_verified',
+            'academic_title', 'bio', 'years_of_experience', 'is_verified',
             'created_at', 'updated_at',
         )
         read_only_fields = ('is_verified',)
@@ -35,12 +35,33 @@ class PublicDoctorSerializer(serializers.ModelSerializer):
         model = DoctorProfile
         fields = (
             'id', 'user', 'full_name',
-            'specialty', 'hospital', 'bio',
+            'specialty', 'hospital', 'address', 'academic_title', 'bio',
             'years_of_experience', 'is_verified',
         )
 
     def get_full_name(self, obj):
         return obj.user.get_full_name() or obj.user.username
+
+
+class PatientSummarySerializer(serializers.Serializer):
+    """Lightweight per-patient summary for the doctor dashboard."""
+    id = serializers.IntegerField()
+    username = serializers.CharField()
+    first_name = serializers.CharField()
+    last_name = serializers.CharField()
+    email = serializers.EmailField()
+    full_name = serializers.SerializerMethodField()
+    vitals_count = serializers.IntegerField()
+    records_count = serializers.IntegerField()
+    open_alerts_count = serializers.IntegerField()
+    latest_vital_at = serializers.DateTimeField(allow_null=True)
+
+    def get_full_name(self, obj):
+        return obj.get_full_name() or obj.username
+
+
+class ConnectedPatientSerializer(PatientSummarySerializer):
+    """Alias kept for compatibility with the default viewset serializer_class."""
 
 
 class ConnectionSerializer(serializers.ModelSerializer):
@@ -58,7 +79,7 @@ class ConnectionSerializer(serializers.ModelSerializer):
 
 class ConnectionCreateSerializer(serializers.ModelSerializer):
     """
-    Create a new connection request. Status is forced to PENDING on creation.
+    Create a new connection request. The doctor must explicitly approve it.
     """
     doctor_id = serializers.PrimaryKeyRelatedField(
         source='doctor',
@@ -85,15 +106,3 @@ class ConnectionCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data['status'] = ConnectionStatus.PENDING
         return super().create(validated_data)
-
-
-class ConnectionStatusUpdateSerializer(serializers.ModelSerializer):
-    """Approve / reject a connection request."""
-    class Meta:
-        model = DoctorPatientConnection
-        fields = ('status',)
-
-    def validate_status(self, value):
-        if value not in (ConnectionStatus.APPROVED, ConnectionStatus.REJECTED):
-            raise serializers.ValidationError('Only APPROVED or REJECTED are allowed here.')
-        return value

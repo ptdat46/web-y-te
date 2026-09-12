@@ -3,10 +3,10 @@ from django.db import models
 
 
 class ConnectionStatus(models.TextChoices):
-    PENDING = 'PENDING', 'Pending'
-    APPROVED = 'APPROVED', 'Approved'
-    REJECTED = 'REJECTED', 'Rejected'
-    BLOCKED = 'BLOCKED', 'Blocked'
+    PENDING = 'PENDING', 'Chờ duyệt'
+    APPROVED = 'APPROVED', 'Đã duyệt'
+    REJECTED = 'REJECTED', 'Từ chối'
+    BLOCKED = 'BLOCKED', 'Đã chặn'
 
 
 class DoctorProfile(models.Model):
@@ -16,6 +16,7 @@ class DoctorProfile(models.Model):
         related_name='doctor_profile',
     )
     specialty = models.CharField(max_length=255, blank=True)
+    academic_title = models.CharField(max_length=100, blank=True)
     hospital = models.CharField(max_length=255, blank=True)
     address = models.CharField(max_length=255, blank=True)
     phone = models.CharField(max_length=30, blank=True)

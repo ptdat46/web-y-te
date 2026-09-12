@@ -5,18 +5,20 @@ import { useAuth } from '../lib/auth.context'
 export default function LoginPage() {
   const { login } = useAuth()
   const navigate = useNavigate()
-  const [username, setUsername] = useState('')
+  const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const registered = new URLSearchParams(window.location.search).get('registered') === '1'
+  const reset = new URLSearchParams(window.location.search).get('reset') === 'success'
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
     setSubmitting(true)
     try {
-      await login(username.trim(), password)
-      navigate('/app', { replace: true })
+      const loggedInUser = await login(identifier.trim(), password)
+      navigate(loggedInUser.must_change_password ? '/change-password' : '/app', { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Đăng nhập thất bại')
     } finally {
@@ -37,19 +39,22 @@ export default function LoginPage() {
           <h2 className="text-xl font-semibold text-teal-950">Đăng nhập</h2>
           <p className="mt-1 text-sm text-teal-600">Đăng nhập để tiếp tục theo dõi sức khỏe của bạn.</p>
 
+          {registered && <p className="mt-4 rounded-xl bg-green-50 px-4 py-3 text-sm font-medium text-green-700">Đăng ký thành công. Hãy kiểm tra email để xác thực tài khoản.</p>}
+          {reset && <p className="mt-4 rounded-xl bg-green-50 px-4 py-3 text-sm font-medium text-green-700">Đặt lại mật khẩu thành công. Hãy đăng nhập bằng mật khẩu mới.</p>}
+
           {error && (
             <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</p>
           )}
 
           <div className="mt-5 space-y-4">
             <div>
-              <label className="mb-1 block text-sm font-medium text-teal-900" htmlFor="username">Tên đăng nhập</label>
+              <label className="mb-1 block text-sm font-medium text-teal-900" htmlFor="identifier">Email hoặc tên đăng nhập</label>
               <input
-                id="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                id="identifier"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 className="w-full rounded-xl border border-teal-200 bg-white px-4 py-2.5 text-teal-950 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
-                placeholder="username"
+                placeholder="you@example.com hoặc username"
                 autoComplete="username"
                 required
               />
@@ -76,10 +81,11 @@ export default function LoginPage() {
             </button>
           </div>
 
+          <div className="mt-4 flex justify-center gap-4 text-sm"><Link to="/forgot-password" className="font-semibold text-teal-700 underline">Quên mật khẩu?</Link><Link to="/resend-verification" className="font-semibold text-teal-700 underline">Gửi lại email xác thực</Link></div>
           <p className="mt-6 text-center text-sm text-teal-600">
             Chưa có tài khoản?{' '}
             <Link to="/register" className="font-semibold text-teal-700 underline-offset-2 hover:underline">
-              Đăng ký
+              Bệnh nhân đăng ký
             </Link>
           </p>
         </form>

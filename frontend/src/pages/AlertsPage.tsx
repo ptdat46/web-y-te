@@ -8,7 +8,9 @@ export default function AlertsPage() {
   const { user } = useAuth()
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [loading, setLoading] = useState(true)
+  const [busyId, setBusyId] = useState<number | null>(null)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -34,7 +36,17 @@ export default function AlertsPage() {
     }
   }
 
-  const canResolve = user?.role === 'DOCTOR' || user?.role === 'ADMIN'
+  async function patientAction(id: number, action: 'read' | 'contact-doctor') {
+    setBusyId(id); setError(''); setNotice('')
+    try {
+      const result = await http.post<{ detail?: string }>(`/alerts/${id}/${action}/`)
+      setNotice(result.detail || (action === 'read' ? 'Đã đánh dấu cảnh báo là đã đọc.' : 'Đã gửi yêu cầu liên hệ bác sĩ.'))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể thực hiện thao tác.')
+    } finally { setBusyId(null) }
+  }
+
+  const canResolve = user?.role === 'DOCTOR'
 
   return (
     <div className="space-y-6">
@@ -48,6 +60,7 @@ export default function AlertsPage() {
       </div>
 
       {error && <p className="rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
+      {notice && <p className="rounded-xl bg-green-50 px-4 py-2 text-sm text-green-700">{notice}</p>}
 
       <Card title="Danh sách cảnh báo">
         {loading ? (
@@ -87,6 +100,12 @@ export default function AlertsPage() {
                     >
                       Xác nhận xử lý
                     </button>
+                  )}
+                  {user?.role === 'PATIENT' && (
+                    <div className="flex gap-2">
+                      <button disabled={busyId === a.id} onClick={() => patientAction(a.id, 'read')} className="rounded-lg bg-teal-100 px-3 py-1.5 text-xs font-semibold text-teal-800 hover:bg-teal-200 disabled:opacity-50">Đánh dấu đã đọc</button>
+                      <button disabled={busyId === a.id} onClick={() => patientAction(a.id, 'contact-doctor')} className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-50">Liên hệ bác sĩ</button>
+                    </div>
                   )}
                 </div>
               </li>

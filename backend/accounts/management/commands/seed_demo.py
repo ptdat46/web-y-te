@@ -36,6 +36,7 @@ class Command(BaseCommand):
         admin.is_staff = True
         admin.is_superuser = True
         admin.set_password('admin-secure-pass-2026')
+        admin.email_verified = True
         admin.save()
 
         doctor, _ = User.objects.get_or_create(
@@ -51,6 +52,8 @@ class Command(BaseCommand):
         doctor.first_name = 'Nguyen'
         doctor.last_name = 'Van A'
         doctor.set_password('Test1234!')
+        doctor.must_change_password = True
+        doctor.email_verified = True
         doctor.save()
 
         patient, _ = User.objects.get_or_create(
@@ -66,6 +69,7 @@ class Command(BaseCommand):
         patient.first_name = 'Tran'
         patient.last_name = 'Van B'
         patient.set_password('Test1234!')
+        patient.email_verified = True
         patient.save()
 
         doctor2, _ = User.objects.get_or_create(
@@ -87,9 +91,9 @@ class Command(BaseCommand):
         profile1, _ = DoctorProfile.objects.get_or_create(
             user=doctor,
             defaults={
-                'specialty': 'Cardiology',
-                'hospital': 'Hanoi Heart Hospital',
-                'bio': 'Cardiologist with 15 years of experience.',
+                'specialty': 'Tim mạch',
+                'hospital': 'Bệnh viện Tim Hà Nội',
+                'bio': 'Bác sĩ chuyên khoa tim mạch với 15 năm kinh nghiệm.',
                 'years_of_experience': 15,
                 'is_verified': True,
             },
@@ -99,9 +103,9 @@ class Command(BaseCommand):
         DoctorProfile.objects.get_or_create(
             user=doctor2,
             defaults={
-                'specialty': 'Neurology',
-                'hospital': 'Bach Mai Hospital',
-                'bio': 'Neurologist focusing on headaches and stroke prevention.',
+                'specialty': 'Thần kinh',
+                'hospital': 'Bệnh viện Bạch Mai',
+                'bio': 'Bác sĩ chuyên khoa thần kinh, tập trung điều trị đau đầu và phòng ngừa đột quỵ.',
                 'years_of_experience': 10,
                 'is_verified': True,
             },
@@ -127,7 +131,7 @@ class Command(BaseCommand):
                     'blood_pressure_sys': random.randint(105, 138),
                     'blood_pressure_dia': random.randint(65, 89),
                     'oxygen_saturation': round(random.uniform(96.0, 99.0), 1),
-                    'notes': 'Self-reported reading',
+                    'notes': 'Người bệnh tự ghi nhận',
                 },
             )
 
@@ -141,7 +145,7 @@ class Command(BaseCommand):
                 'blood_pressure_sys': 152,
                 'blood_pressure_dia': 96,
                 'oxygen_saturation': 93.0,
-                'notes': 'Fever and rapid heartbeat',
+                'notes': 'Sốt và nhịp tim nhanh',
             },
         )
         if abnormal.is_abnormal():
@@ -150,8 +154,8 @@ class Command(BaseCommand):
                 related_vital=abnormal,
                 defaults={
                     'created_by': patient,
-                    'title': 'Abnormal vital signs detected',
-                    'message': 'Abnormal reading(s): ' + ', '.join(abnormal.abnormal_reason()),
+                    'title': 'Phát hiện chỉ số sức khỏe bất thường',
+                    'message': 'Chỉ số bất thường: ' + ', '.join(abnormal.abnormal_reason()),
                     'severity': AlertSeverity.HIGH,
                     'status': AlertStatus.OPEN,
                 },
@@ -161,11 +165,11 @@ class Command(BaseCommand):
         MedicalRecord.objects.get_or_create(
             patient=patient,
             doctor=doctor,
-            title='Annual checkup',
+            title='Khám sức khỏe định kỳ',
             defaults={
-                'notes': 'Patient reports occasional mild headaches.',
+                'notes': 'Người bệnh thỉnh thoảng bị đau đầu nhẹ.',
                 'diagnosis': 'Stage 1 hypertension',
-                'prescription': 'Amlodipine 5mg daily, follow-up in 3 months.',
+                'prescription': 'Amlodipine 5 mg mỗi ngày, tái khám sau 3 tháng.',
             },
         )
 
