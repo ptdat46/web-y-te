@@ -1,45 +1,39 @@
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.permissions import IsPatientOrDoctor
 from care.audit import log_audit
-from care.models import Alert, AuditAction, MedicalRecord, VitalSign
-from .models import ChatConversation, ChatMessage, MessageRole
-from .serializers import (
-    ChatConversationDetailSerializer,
-    ChatConversationSerializer,
-    ChatSendSerializer,
-)
-from .services import generate_reply
+from care.models import AuditAction
+from doctors.models import ConnectionStatus, DoctorPatientConnection
 
-def build_patient_context(user):
-    records = MedicalRecord.objects.filter(patient=user).select_related('disease')[:50]
-    vitals = VitalSign.objects.filter(patient=user)[:50]
-    alerts = Alert.objects.filter(patient=user)[:50]
-    lines = [f'Người dùng: {user.get_full_name() or user.username}; vai trò: {user.role}', 'Bệnh án:']
-    lines += [
-        f'- {record.created_at.isoformat()} | {record.title} | bệnh: '
-        f'{record.disease.name_vi if record.disease else ""} | ghi chú: {record.notes} | '
-        f'chẩn đoán: {record.diagnosis} | đơn thuốc: {record.prescription}'
-        for record in records
-    ]
-    lines.append('Sinh hiệu:')
-    lines += [
-        f'- {vital.recorded_at.isoformat()} | nhiệt độ: {vital.temperature}; '
-        f'nhịp tim: {vital.heart_rate}; huyết áp: '
-        f'{vital.blood_pressure_sys}/{vital.blood_pressure_dia}; SpO2: '
-        f'{vital.oxygen_saturation}; ghi chú: {vital.notes}'
-        for vital in vitals
-    ]
-    lines.append('Cảnh báo:')
-    lines += [
-        f'- {alert.created_at.isoformat()} | {alert.severity} | {alert.status} | '
-        f'{alert.title}: {alert.message}'
-        for alert in alerts
-    ]
-    return '\n'.join(lines)
+from .models import ChatConversation, ChatMessage, MessageRole
+from .serializers import ChatConversationDetailSerializer, ChatConversationSerializer, ChatSendSerializer
+from .services import build_patient_context, generate_reply
+
+
+def can_access_patient(requester, patient):
+    """Return whether requester may use chatbot context for exactly patient."""
+    if requester.role == 'PATIENT':
+        return requester.pk == patient.pk
+    if requester.role != 'DOCTOR' or patient.role != 'PATIENT':
+        return False
+    return DoctorPatientConnection.objects.filter(
+        doctor__user=requester,
+        patient=patient,
+        status=ConnectionStatus.APPROVED,
+    ).exists()
+
+
+def resolve_conversation_target(conversation, requester):
+    target = conversation.target_patient
+    if target is None and requester.role == 'PATIENT':
+        target = requester
+    if target is None or not can_access_patient(requester, target):
+        raise NotFound('Cuộc trò chuyện không tồn tại.')
+    return target
 
 
 class ConversationViewSet(
@@ -49,20 +43,25 @@ class ConversationViewSet(
     mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
-    """
-    Chat conversations with the symptom assistant.
-
-    * GET    /chat/conversations/              -> my conversations
-    * POST   /chat/conversations/              -> start a new conversation
-    * GET    /chat/conversations/{id}/         -> detail incl. messages
-    * POST   /chat/conversations/{id}/send/    -> send a message + get reply
-    * DELETE /chat/conversations/{id}/         -> delete a conversation
-    """
+    """Conversations whose health context is always scoped to one patient."""
     serializer_class = ChatConversationSerializer
     permission_classes = [IsAuthenticated, IsPatientOrDoctor]
 
     def get_queryset(self):
-        return ChatConversation.objects.filter(user=self.request.user).prefetch_related('messages')
+        queryset = (
+            ChatConversation.objects.filter(user=self.request.user)
+            .select_related('target_patient')
+            .prefetch_related('messages')
+        )
+        if self.request.user.role == 'DOCTOR':
+            queryset = queryset.filter(
+                target_patient__role='PATIENT',
+                target_patient__doctor_connections__doctor__user=self.request.user,
+                target_patient__doctor_connections__status=ConnectionStatus.APPROVED,
+            )
+        else:
+            queryset = queryset.filter(target_patient=self.request.user)
+        return queryset.distinct()
 
     def get_serializer_class(self):
         if self.action == 'retrieve':
@@ -70,7 +69,10 @@ class ConversationViewSet(
         return ChatConversationSerializer
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        target = serializer.validated_data['target_patient']
+        if not can_access_patient(self.request.user, target):
+            raise PermissionDenied('Bạn không có quyền truy cập bệnh nhân này.')
+        serializer.save(user=self.request.user, target_patient=target)
 
     def perform_destroy(self, instance):
         log_audit(
@@ -78,36 +80,40 @@ class ConversationViewSet(
             actor=self.request.user,
             action=AuditAction.DELETE,
             obj=instance,
-            summary=f'Chat conversation deleted: {instance.pk}',
+            summary=f'Chat conversation deleted: {instance.pk} for patient {instance.target_patient_id}',
         )
         instance.delete()
 
     @action(detail=True, methods=['post'])
     def send(self, request, pk=None):
         conversation = self.get_object()
+        if not conversation.is_active:
+            return Response({'detail': 'Cuộc trò chuyện đã đóng.'}, status=status.HTTP_400_BAD_REQUEST)
+        target = resolve_conversation_target(conversation, request.user)
         serializer = ChatSendSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user_text = serializer.validated_data['message']
 
+        context = build_patient_context(target)
         user_message = ChatMessage.objects.create(
             conversation=conversation,
             role=MessageRole.USER,
             content=user_text,
+            context_version=context['version'],
+            context_hash=context['hash'],
+            context_generated_at=context['generated_at'],
         )
-
-        # Build history for the provider from prior messages (exclude the just-saved user msg)
         history = [
             {'role': 'assistant' if m.role == MessageRole.ASSISTANT else 'user', 'content': m.content}
             for m in conversation.messages.exclude(pk=user_message.pk)
         ]
-
         reply_text, red_flag = generate_reply(
             user_text,
             history,
-            patient_context=build_patient_context(request.user),
+            patient_context=context['content'],
+            requester_role=request.user.role,
         )
-
-        assistant_message = ChatMessage.objects.create(
+        ChatMessage.objects.create(
             conversation=conversation,
             role=MessageRole.ASSISTANT,
             content=reply_text,
@@ -115,19 +121,9 @@ class ConversationViewSet(
         )
 
         if not conversation.title:
-            title = user_text[:50]
-            conversation.title = title + ('…' if len(user_text) > 50 else '')
-            conversation.save(update_fields=['title'])
-
-        conversation.save(update_fields=['updated_at'])
-
-        # Refresh the prefetched messages cache so the serializer returns fresh data
-        if conversation._prefetched_objects_cache:
-            conversation._prefetched_objects_cache['messages'] = list(
-                ChatMessage.objects.filter(conversation=conversation).order_by('created_at')
-            )
-
-        return Response(
-            ChatConversationDetailSerializer(conversation).data,
-            status=status.HTTP_200_OK,
+            conversation.title = user_text[:50] + ('…' if len(user_text) > 50 else '')
+        conversation.save(update_fields=['title', 'updated_at'])
+        conversation._prefetched_objects_cache['messages'] = list(
+            ChatMessage.objects.filter(conversation=conversation).order_by('created_at')
         )
+        return Response(ChatConversationDetailSerializer(conversation).data, status=status.HTTP_200_OK)

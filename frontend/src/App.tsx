@@ -93,7 +93,7 @@ export default function App() {
               <Route element={<RequireAuth roles={['PATIENT', 'DOCTOR']} />}>
                 <Route path="/app/chat" element={<ChatHubPage />} />
               </Route>
-              <Route element={<RequireAuth roles={['PATIENT']} />}>
+              <Route element={<RequireAuth roles={['PATIENT', 'DOCTOR']} />}>
                 <Route path="/app/chatbot" element={<ChatbotPage />} />
               </Route>
 
