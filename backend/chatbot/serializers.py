@@ -3,11 +3,12 @@ from rest_framework import serializers
 from accounts.models import User
 from accounts.serializers import PublicUserSerializer
 
-from .models import ChatConversation, ChatMessage
+from .models import ChatConversation
 
 
 class ChatMessageSerializer(serializers.ModelSerializer):
     class Meta:
+        from .models import ChatMessage
         model = ChatMessage
         fields = ('id', 'role', 'content', 'red_flag', 'created_at')
         read_only_fields = ('role', 'content', 'red_flag', 'created_at')
@@ -51,11 +52,7 @@ class ChatConversationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Vai trò này không được sử dụng chatbot.')
         return attrs
 
-    def create(self, validated_data):
-        return super().create(validated_data)
-
     def _messages(self, obj):
-        # Works with both a prefetched queryset and a plain list
         msgs = getattr(obj, 'messages', None)
         if msgs is None:
             return []
@@ -65,9 +62,7 @@ class ChatConversationSerializer(serializers.ModelSerializer):
 
     def get_last_message(self, obj):
         msgs = self._messages(obj)
-        if msgs:
-            return msgs[-1].content[:120]
-        return None
+        return msgs[-1].content[:120] if msgs else None
 
     def get_message_count(self, obj):
         return len(self._messages(obj))
@@ -88,3 +83,10 @@ class ChatSendSerializer(serializers.Serializer):
         if not value:
             raise serializers.ValidationError('Thông báo không được rỗng.')
         return value
+
+
+class VisionResultSerializer(serializers.Serializer):
+    analysis_id = serializers.IntegerField()
+    status = serializers.CharField()
+    result = serializers.JSONField(allow_null=True)
+    error_code = serializers.CharField()

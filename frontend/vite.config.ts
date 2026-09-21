@@ -8,12 +8,12 @@ export default defineConfig({
     proxy: {
       // Proxy API requests so cookies work same-origin (SameSite=Lax)
       '/api': {
-        target: 'http://localhost:8000',
+        target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:8000',
         changeOrigin: true,
       },
       // Proxy WebSocket connections to Django Channels
       '/ws': {
-        target: 'ws://localhost:8000',
+        target: process.env.VITE_WS_PROXY_TARGET || 'ws://localhost:8000',
         ws: true,
       },
     },

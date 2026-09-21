@@ -3,6 +3,14 @@ import { http, ApiClientError } from '../lib/api'
 import { useAuth } from '../lib/auth.context'
 import type { PatientSummary } from '../lib/types'
 
+interface PatientTarget {
+  id: number
+  username: string
+  first_name: string
+  last_name: string
+  role_display?: string
+}
+
 interface ChatMessage {
   id: number
   role: 'USER' | 'ASSISTANT'
@@ -14,7 +22,7 @@ interface ChatMessage {
 interface Conversation {
   id: number
   title: string
-  target_patient?: PatientSummary | null
+  target_patient?: PatientTarget | null
   created_at: string
   updated_at: string
   last_message: string | null
@@ -25,9 +33,10 @@ interface ConversationDetail extends Conversation {
   messages: ChatMessage[]
 }
 
-function patientName(patient?: PatientSummary | null) {
+function patientName(patient?: PatientTarget | PatientSummary | null) {
   if (!patient) return ''
-  return patient.full_name || `${patient.first_name} ${patient.last_name}`.trim() || patient.username
+  const candidate = patient as PatientTarget & Partial<PatientSummary>
+  return candidate.full_name || `${candidate.first_name || ''} ${candidate.last_name || ''}`.trim() || candidate.username
 }
 
 export default function ChatbotPage() {
@@ -41,6 +50,9 @@ export default function ChatbotPage() {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   const [input, setInput] = useState('')
+  const [image, setImage] = useState<File | null>(null)
+  const [visionResult, setVisionResult] = useState<Record<string, unknown> | null>(null)
+  const [imageError, setImageError] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
   const loadList = useCallback(async () => {
@@ -108,17 +120,30 @@ export default function ChatbotPage() {
   async function send(e: FormEvent) {
     e.preventDefault()
     const text = input.trim()
-    if (!text || !active || sending) return
+    if ((!text && !image) || !active || sending) return
     setInput('')
     setSending(true)
     try {
-      const data = await http.post<ConversationDetail>(`/chat/conversations/${active.id}/send/`, { message: text })
-      setActive(data)
+      if (image) {
+        const form = new FormData()
+        form.append('image', image)
+        form.append('message', text)
+        const data = await http.postForm<{ analysis_id: number; status: string; result: Record<string, unknown> | null; error_code: string }>(`/chat/conversations/${active.id}/vision/`, form)
+        if (data.status !== 'SUCCEEDED' || !data.result) {
+          setError(data.error_code ? `Phân tích ảnh chưa hoàn tất (${data.error_code}). Vui lòng thử lại sau.` : 'Phân tích ảnh chưa hoàn tất. Vui lòng thử lại sau.')
+          return
+        }
+        setVisionResult(data.result)
+        setImage(null)
+      } else {
+        const data = await http.post<ConversationDetail>(`/chat/conversations/${active.id}/send/`, { message: text })
+        setActive(data)
+      }
       await loadList()
       setError('')
     } catch (err) {
       setInput(text)
-      setError(err instanceof ApiClientError ? err.message : 'Không thể gửi tin nhắn.')
+      setError(err instanceof ApiClientError ? err.message : 'Không thể gửi yêu cầu.')
     } finally {
       setSending(false)
     }
@@ -200,9 +225,33 @@ export default function ChatbotPage() {
               {sending && <div className="flex justify-start"><div className="rounded-2xl rounded-bl-sm bg-teal-50 px-4 py-3"><div className="flex gap-1"><span className="h-2 w-2 animate-bounce rounded-full bg-teal-500" /><span className="h-2 w-2 animate-bounce rounded-full bg-teal-500 [animation-delay:150ms]" /><span className="h-2 w-2 animate-bounce rounded-full bg-teal-500 [animation-delay:300ms]" /></div></div></div>}
               <div ref={bottomRef} />
             </div>
-            <form onSubmit={send} className="flex gap-2 border-t border-teal-100 p-4">
-              <input value={input} onChange={e => setInput(e.target.value)} placeholder="Nhập triệu chứng hoặc câu hỏi…" className="flex-1 rounded-xl border border-teal-200 px-4 py-2.5 text-teal-950 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200" maxLength={2000} />
-              <button type="submit" disabled={sending || !input.trim()} className="rounded-xl bg-teal-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-50">{sending ? 'Đang gửi…' : 'Gửi'}</button>
+            {visionResult && (
+              <div className="mx-5 mb-3 rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-teal-950">
+                <p className="font-semibold text-orange-800">Kết quả phân tích hình ảnh (tham khảo)</p>
+                {!!visionResult.visual_findings && <p className="mt-2"><strong>Nhận định:</strong> {String(visionResult.visual_findings)}</p>}
+                {!!visionResult.urgency_label && <p className="mt-1"><strong>Phân luồng:</strong> {String(visionResult.urgency_label)}</p>}
+                {!!visionResult.recommended_specialty && <p className="mt-1"><strong>Chuyên khoa:</strong> {String(visionResult.recommended_specialty)}</p>}
+                {!!visionResult.disclaimer && <p className="mt-2 text-xs text-slate-600">{String(visionResult.disclaimer)}</p>}
+              </div>
+            )}
+            <form onSubmit={send} className="flex flex-wrap gap-2 border-t border-teal-100 p-4">
+              <label className="flex cursor-pointer items-center rounded-xl border border-teal-200 px-3 py-2 text-sm text-teal-700">
+                Ảnh
+                <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={e => {
+                  const selected = e.target.files?.[0] || null
+                  if (selected && selected.size > 10 * 1024 * 1024) {
+                    setImageError('Ảnh không được vượt quá 10 MB.')
+                    setImage(null)
+                    return
+                  }
+                  setImageError('')
+                  setImage(selected)
+                }} />
+              </label>
+              {imageError && <p className="w-full text-xs text-red-700">{imageError}</p>}
+              {image && <button type="button" onClick={() => setImage(null)} className="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700">{image.name} ×</button>}
+              <input value={input} onChange={e => setInput(e.target.value)} placeholder={image ? 'Mô tả triệu chứng kèm ảnh…' : 'Nhập triệu chứng hoặc câu hỏi…'} className="min-w-[12rem] flex-1 rounded-xl border border-teal-200 px-4 py-2.5 text-teal-950 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200" maxLength={2000} />
+              <button type="submit" disabled={sending || (!input.trim() && !image)} className="rounded-xl bg-teal-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-50">{sending ? 'Đang phân tích…' : image ? 'Phân tích ảnh' : 'Gửi'}</button>
             </form>
           </>
         )}

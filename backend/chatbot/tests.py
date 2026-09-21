@@ -1,5 +1,4 @@
 from types import SimpleNamespace
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -62,18 +61,21 @@ class ChatbotAuthorizationTests(TestCase):
         self.assertFalse(serializer.is_valid())
         self.assertIn('patient_id', serializer.errors)
 
-    @patch('chatbot.services.call_ollama', return_value='Đã nhận được câu hỏi.')
-    def test_ollama_payload_contains_one_context(self, call_ollama):
+    @patch('chatbot.services.call_inference_text', return_value={
+        'visual_findings': 'Đã nhận được câu hỏi.',
+        'red_flags_check': {'has_red_flag': False},
+        'disclaimer': 'Tham khảo.',
+    })
+    def test_inference_payload_contains_one_context(self, call_inference):
         generate_reply(
             'Tình trạng hiện tại?',
             [],
             patient_context='Bệnh nhân: patient-a\nA-only note',
             requester_role='DOCTOR',
         )
-        messages = call_ollama.call_args.args[0]
-        payload = '\n'.join(message['content'] for message in messages)
-        self.assertIn('patient-a', payload)
-        self.assertNotIn('patient-b', payload)
+        self.assertEqual(call_inference.call_args.args[0], 'Tình trạng hiện tại?')
+        self.assertIn('patient-a', call_inference.call_args.args[2])
+        self.assertNotIn('patient-b', call_inference.call_args.args[2])
 
 
 class ChatbotEndpointTests(TestCase):

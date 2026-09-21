@@ -19,6 +19,8 @@ flowchart LR
 | Backend | Python, Django, Django REST Framework, SimpleJWT | `8000` | API, xác thực, phân quyền, nghiệp vụ sức khỏe |
 | Database | SQLite (mặc định Django) | file `backend/db.sqlite3` | Lưu tài khoản, hồ sơ, sinh hiệu, cảnh báo, audit và chatbot |
 | Ollama | Tùy chọn | `11434` | Chạy LLM local cho chatbot; không có vẫn dùng phản hồi dự phòng |
+| Inference service | Tùy chọn local | `8100` | Nhận ảnh, đọc RAG và điều phối model vision |
+| Qdrant | Tùy chọn local | `6333` | Lưu/truy hồi chỉ mục tri thức RAG |
 
 Luồng request:
 
@@ -232,35 +234,96 @@ Lệnh `seed_demo` tạo dữ liệu giả:
 Đăng ký công khai chỉ tạo tài khoản `PATIENT`. Không dùng tài khoản và dữ liệu demo
 trong production.
 
-## 9. Ollama cho chatbot (tùy chọn)
+## 9. Ollama và FastAPI chatbot (local)
 
-Không cài Ollama, hệ thống vẫn chạy; chatbot trả phản hồi dự phòng khi không kết nối được
-LLM.
+Chatbot ảnh/RAG chạy qua bốn process local: Ollama (`11434`), inference FastAPI (`8100`), Django backend (`8000`) và Vite frontend (`5173`). Trình duyệt chỉ gọi Django qua Vite proxy; Django kiểm tra quyền bệnh nhân rồi gọi FastAPI nội bộ.
 
-Muốn chạy LLM local:
-
-1. Cài Ollama từ `https://ollama.com/download/windows`.
-2. Khởi động Ollama.
-3. Tải model, ví dụ `qwen2.5:7b`:
+### Terminal 1 — Ollama
 
 ```powershell
-ollama pull qwen2.5:7b
+ollama list
+ollama pull qwen2.5vl:3b
 ```
 
-4. Đặt biến trong cửa sổ backend trước khi chạy Django:
+Nếu `ollama list` hiển thị tag khác, dùng chính tag đó trong `OLLAMA_VISION_MODEL`.
+
+### Terminal 2 — Django backend
+
+Giữ các bước cài đặt/migration ở mục 6. Trước khi chạy Django, đặt:
 
 ```powershell
-$env:OLLAMA_BASE_URL="http://localhost:11434"
-$env:OLLAMA_MODEL="qwen2.5:7b"
-$env:OLLAMA_TIMEOUT="15"
+$env:OLLAMA_BASE_URL="http://127.0.0.1:11434"
+$env:OLLAMA_VISION_MODEL="qwen2.5vl:3b"
+$env:AI_SERVICE_URL="http://127.0.0.1:8100"
+$env:AI_SERVICE_TIMEOUT="300"
 ```
 
-Backend gửi tin nhắn, lịch sử hội thoại, bệnh án, sinh hiệu và cảnh báo của tài khoản hiện
-tại tới Ollama. Chatbot chỉ hỗ trợ định hướng, không thay thế bác sĩ.
+Sau đó chạy `..\\.venv\\Scripts\\python.exe manage.py runserver 127.0.0.1:8000`.
+
+### Terminal 3 — Inference FastAPI (VLM + RAG)
+
+Từ thư mục gốc project:
+
+```powershell
+python -m venv .ai-venv
+.\\.ai-venv\\Scripts\\python.exe -m pip install -r inference_service\\requirements.txt
+$env:OLLAMA_BASE_URL="http://127.0.0.1:11434"
+$env:OLLAMA_VISION_MODEL="qwen2.5vl:3b"
+.\\.ai-venv\\Scripts\\python.exe -m uvicorn inference_service.main:app --host 127.0.0.1 --port 8100
+```
+
+RAG mặc định đọc `AI Chatbot/data/rag_knowledge_base/`, chia tài liệu thành chunk và truy hồi các đoạn liên quan bằng lexical fallback deterministic; Qdrant là tùy chọn. Kiểm tra service bằng:
+
+```powershell
+Invoke-WebRequest http://127.0.0.1:8100/health
+Invoke-WebRequest http://127.0.0.1:8100/ready
+```
+
+`/ready` chỉ thành công khi Ollama reachable và model tag tồn tại. Nếu model hoặc FastAPI chưa chạy, giao diện phải báo lỗi dịch vụ, không coi đó là kết quả chẩn đoán.
+
+### Terminal 4 — Vite frontend
+
+Giữ các bước ở mục 7 và mở `http://localhost:5173`.
+
+Tài liệu RAG phải được phép sử dụng và không chứa PHI ngoài chính sách. Kết quả AI chỉ tham khảo, không thay thế khám trực tiếp.
+
+### Smoke test trên trình duyệt (đủ luồng web)
+
+Sau khi bốn process đang chạy, mở `http://localhost:5173` bằng trình duyệt (không gọi
+`8100` trực tiếp từ trình duyệt) và thực hiện:
+
+1. Đăng nhập bằng `patient.tran` / `Test1234!`.
+2. Mở **Chatbot**, chọn **Cuộc trò chuyện mới**.
+3. Gửi `Tôi bị ngứa nhẹ, nên chăm sóc da thế nào?` và chờ trạng thái `Đang phân tích…` kết thúc.
+4. Xác nhận bong bóng assistant xuất hiện, có phân luồng/cảnh báo an toàn và không xuất hiện
+   câu fallback `Hiện chưa kết nối được với trợ lý AI`.
+5. Chọn một ảnh JPEG/PNG/WebP nhỏ, nhập câu hỏi kèm ảnh rồi chọn **Phân tích ảnh**.
+6. Xác nhận thẻ **Kết quả phân tích hình ảnh (tham khảo)** xuất hiện; kết quả có model
+   `qwen2.5vl:3b`, `knowledge_base_version: filesystem-rag` và citations khi RAG truy hồi
+   được tài liệu.
+
+Đồng thời kiểm tra DevTools → Network: browser chỉ có request `/api/v1/...`; không được có
+request từ browser tới `/v1/chat`, `/v1/analyze`, `:8100` hoặc `:11434`. Nếu inference
+service dừng, UI phải giữ input và hiển thị lỗi dịch vụ thay vì hiển thị chẩn đoán thành công.
+
+### Ma trận nghiệm thu theo plan
+
+| Luồng | Điều kiện đạt | Cách kiểm tra |
+|---|---|---|
+| Text chat | Django lưu user/assistant message và trả phản hồi Qwen thật | Chatbot trên web, Network `POST /api/v1/chat/conversations/<id>/send/` |
+| Ảnh da liễu | Attachment private, phân tích có trạng thái/cảnh báo | Upload ảnh trong Chatbot, kiểm tra thẻ kết quả và endpoint `vision/` |
+| RAG | Context được truy hồi, citation source/chunk xuất hiện | Gửi câu hỏi liên quan tài liệu, kiểm tra `knowledge_base_version` và `citations` |
+| Guardrail | Red flag được nâng mức phân luồng, không tự chẩn đoán/kê đơn | Thử câu hỏi có `khó thở`, kiểm tra cảnh báo khẩn cấp |
+| ACL | Bệnh nhân/bác sĩ chỉ truy cập đúng conversation và patient được phép | Đăng nhập tài khoản khác, thử mở conversation không thuộc quyền |
+| Provider failure | Timeout/model unavailable hiển thị lỗi, không ghi thành công giả | Dừng Ollama hoặc FastAPI rồi gửi lại |
+| Vận hành | Bốn process chạy đúng port và `/ready` kiểm tra model | Kiểm tra các URL ở mục Terminal 1–4 |
+
+Kết quả nghiệm thu gần nhất: FastAPI `/v1/chat` và `/v1/analyze` qua model thật trả HTTP
+200; Django authenticated text flow trả HTTP 200 và lưu assistant message; RAG trả citations;
+Django chatbot tests `7/7 passed`; frontend TypeScript/build đều đạt. Cần thực hiện checklist
+trình duyệt ở trên sau mỗi lần thay đổi deployment hoặc đổi model tag.
 
 ## 10. Kiểm tra hệ thống
-
-CI tại `.github/workflows/ci.yml` tự động chạy trên push/pull request tới `main`, gồm Django check, kiểm tra migration, toàn bộ backend tests, TypeScript và frontend build. Local email dùng console backend; production cần cấu hình SMTP trong `.env`.
 
 Đăng ký tài khoản bệnh nhân sẽ gửi liên kết xác thực email. Liên kết có hiệu lực 10 phút và chỉ dùng một lần. Người dùng chưa xác thực không thể đăng nhập. Tại màn hình đăng nhập có thể chọn **Quên mật khẩu**; liên kết đặt lại mật khẩu cũng hết hạn sau 10 phút và chỉ dùng một lần.
 

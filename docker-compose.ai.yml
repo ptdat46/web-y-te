@@ -1,0 +1,25 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.12.5
+    ports:
+      - "127.0.0.1:6333:6333"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+
+  inference:
+    build:
+      context: .
+      dockerfile: inference_service/Dockerfile
+    environment:
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      OLLAMA_VISION_MODEL: ${OLLAMA_VISION_MODEL:-qwen2.5vl:3b}
+      RAG_DIR: /app/AI Chatbot/data/rag_knowledge_base
+    ports:
+      - "127.0.0.1:8100:8100"
+    volumes:
+      - "./AI Chatbot/data/rag_knowledge_base:/app/AI Chatbot/data/rag_knowledge_base:ro"
+    depends_on:
+      - qdrant
+
+volumes:
+  qdrant_storage:

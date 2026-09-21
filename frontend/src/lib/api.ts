@@ -108,9 +108,14 @@ export async function api<T = unknown>(
   }
 
   if (!res.ok) {
+    const data = payload as Record<string, unknown>
+    const fieldMessages = Object.entries(data)
+      .filter(([key]) => key !== 'detail' && key !== 'non_field_errors')
+      .flatMap(([, value]) => Array.isArray(value) ? value.map(String) : [String(value)])
     const detail =
       (payload as { detail?: string })?.detail ||
       (payload as { non_field_errors?: string[] })?.non_field_errors?.join(', ') ||
+      fieldMessages.join(', ') ||
       'Yêu cầu thất bại. Vui lòng thử lại.'
     throw new ApiClientError(res.status, detail, (payload as Record<string, unknown>) || undefined)
   }

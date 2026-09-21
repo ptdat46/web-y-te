@@ -22,7 +22,7 @@ from care.models import (
 
 logger = logging.getLogger(__name__)
 OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
-OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen2.5:7b')
+OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', os.getenv('OLLAMA_VISION_MODEL', 'qwen2.5vl:3b'))
 REQUEST_TIMEOUT = float(os.getenv('OLLAMA_TIMEOUT', '15'))
 CONTEXT_VERSION = 'health-v2'
 CONTEXT_ROW_LIMIT = 50
@@ -204,17 +204,96 @@ def bound_history(history: list[dict]) -> list[dict]:
     return list(reversed(selected))
 
 
+def call_inference_service(question: str, image_bytes: bytes, filename: str, content_type: str, patient_context: str = '') -> dict:
+    """Call the local vision service without exposing it to the browser."""
+    inference_url = os.getenv('AI_SERVICE_URL', 'http://127.0.0.1:8100').rstrip('/')
+    timeout = float(os.getenv('AI_SERVICE_TIMEOUT', '300'))
+    boundary = f'----healthcare-{hashlib.sha256(os.urandom(16)).hexdigest()[:24]}'
+    fields = [
+        (f'--{boundary}\r\nContent-Disposition: form-data; name="question"\r\n\r\n{question}\r\n').encode(),
+        (f'--{boundary}\r\nContent-Disposition: form-data; name="patient_context"\r\n\r\n{patient_context[:12000]}\r\n').encode(),
+        (
+            f'--{boundary}\r\nContent-Disposition: form-data; name="image"; filename="{filename}"\r\n'
+            f'Content-Type: {content_type}\r\n\r\n'
+        ).encode() + image_bytes + b'\r\n',
+        f'--{boundary}--\r\n'.encode(),
+    ]
+    request = urllib.request.Request(
+        f'{inference_url}/v1/analyze',
+        data=b''.join(fields),
+        headers={
+            'Content-Type': f'multipart/form-data; boundary={boundary}',
+            **({'Authorization': f'Bearer {os.getenv("AI_SERVICE_TOKEN")}' } if os.getenv('AI_SERVICE_TOKEN') else {}),
+        },
+        method='POST',
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read().decode('utf-8'))
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+        logger.warning('Inference service call failed: %s', exc)
+        raise OllamaUnavailable(str(exc)) from exc
+
+
+def call_inference_text(question: str, history: list[dict] | None = None, patient_context: str = '') -> dict:
+    """Call the private FastAPI service for text chat."""
+    inference_url = os.getenv('AI_SERVICE_URL', 'http://127.0.0.1:8100').rstrip('/')
+    timeout = float(os.getenv('AI_SERVICE_TIMEOUT', '300'))
+    boundary = f'----healthcare-{hashlib.sha256(os.urandom(16)).hexdigest()[:24]}'
+    payload = question[:2000]
+    body = (
+        f'--{boundary}\r\nContent-Disposition: form-data; name="question"\r\n\r\n{payload}\r\n'
+        f'--{boundary}\r\nContent-Disposition: form-data; name="patient_context"\r\n\r\n{patient_context[:4000]}\r\n'
+        f'--{boundary}--\r\n'
+    ).encode('utf-8')
+    headers = {
+        'Content-Type': f'multipart/form-data; boundary={boundary}',
+        **({'Authorization': f'Bearer {os.getenv("AI_SERVICE_TOKEN")}'} if os.getenv('AI_SERVICE_TOKEN') else {}),
+    }
+    request = urllib.request.Request(f'{inference_url}/v1/chat', data=body, headers=headers, method='POST')
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            result = json.loads(response.read().decode('utf-8'))
+        if not isinstance(result, dict) or not result.get('visual_findings') and result.get('degraded'):
+            raise OllamaUnavailable('invalid inference response')
+        return result
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+        logger.warning('Inference service text call failed: %s', exc)
+        raise OllamaUnavailable(str(exc)) from exc
+
+
+def format_inference_reply(result: dict) -> str:
+    """Turn the structured inference result into readable chat text."""
+    sections = []
+    if result.get('visual_findings'):
+        sections.append(f"Nhận định sơ bộ: {result['visual_findings']}")
+    conditions = result.get('suspected_conditions') or []
+    if conditions:
+        names = ', '.join(str(item.get('name', '')) for item in conditions if item.get('name'))
+        if names:
+            sections.append(f"Khả năng cần lưu ý: {names}")
+    if result.get('urgency_label'):
+        sections.append(f"Phân luồng: {result['urgency_label']}")
+    if result.get('recommended_specialty'):
+        sections.append(f"Chuyên khoa: {result['recommended_specialty']}")
+    red_flags = result.get('red_flags_check') or {}
+    if red_flags.get('has_red_flag'):
+        sections.append(f"⚠ Cảnh báo: {red_flags.get('warning_notes', 'Cần được đánh giá y tế sớm.')}")
+    advice = result.get('initial_care_advice') or []
+    if advice:
+        sections.append('Hướng dẫn tạm thời: ' + '; '.join(str(item) for item in advice[:4]))
+    if result.get('disclaimer'):
+        sections.append(str(result['disclaimer']))
+    return '\n\n'.join(sections) or 'Chưa đủ thông tin để đưa ra nhận định an toàn. Vui lòng trao đổi trực tiếp với nhân viên y tế.'
+
+
 def generate_reply(user_text: str, history: list[dict], patient_context: str = '', requester_role: str = '') -> tuple[str, bool]:
-    messages = [{'role': 'system', 'content': SYSTEM_PROMPT}]
-    if requester_role:
-        messages.append({'role': 'system', 'content': f'Vai trò người hỏi: {requester_role}.'})
-    if patient_context:
-        messages.append({'role': 'system', 'content': f'Dữ liệu bệnh nhân hiện tại:\n{patient_context}'})
-    messages += bound_history(history) + [{'role': 'user', 'content': user_text}]
+    """Compatibility wrapper; new deployments route text through FastAPI."""
     red_flag = _has_red_flag(user_text)
     try:
-        reply = call_ollama(messages)
-        return (reply or _mock_reply(user_text, history)), red_flag
+        result = call_inference_text(user_text, history, patient_context)
+        model_red_flag = bool((result.get('red_flags_check') or {}).get('has_red_flag'))
+        return format_inference_reply(result), red_flag or model_red_flag
     except OllamaUnavailable:
         return _mock_reply(user_text, history), red_flag
     except Exception as exc:
